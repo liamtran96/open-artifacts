@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+coverage/
+
+# Tooling caches
+.turbo/
+.cache/
+.eslintcache
+playwright-report/
+test-results/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local-only product reference studies
+docs/references/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
