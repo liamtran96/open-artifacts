@@ -1,3 +1,7 @@
+---
+title: "Trusted embed API"
+---
+
 # Trusted embed API
 
 Status: Proposed v1 surface for packages/embed and packages/react; not implemented. Pairs with the [host adapter contracts](host-adapters.md) and the [runtime contract](runtime-sdk.md), which covers the untrusted iframe side.

@@ -13,7 +13,7 @@ Open Artifacts is at the design stage. Contributions right now are documentation
 - Every design document carries a status line. Keep it accurate; do not describe unimplemented behavior as working.
 - Public API changes update the matching contract document in the same change: [embed API](docs/contracts/embed-api.md), [host adapters](docs/contracts/host-adapters.md), [agent tools](docs/contracts/agent-tools.md), or [runtime contract](docs/contracts/runtime-sdk.md).
 - Relative links must resolve. Dated files under `docs/plans` and `docs/implementation-notes` are records; add a new dated file rather than rewriting history.
-- Put each document in its category folder; see [docs/README.md](docs/README.md).
+- Put each document in its category folder; see [docs/README.md](docs/README.md). Every page needs a frontmatter `title`; the documentation site renders the `docs/` folder directly, so check new pages with `pnpm --filter @open-artifacts/docs dev`.
 - `docs/references/` holds studies of other products and is gitignored. Never link to it from committed docs and never commit it.
 
 ## Code changes

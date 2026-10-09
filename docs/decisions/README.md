@@ -1,3 +1,7 @@
+---
+title: "Decision records"
+---
+
 # Decision records
 
 Each open design question the [implementation plan](../plans/2026-10-09-sdk-implementation-plan.md) defers has one record here. A record starts as `Open`, moves to `Decided` with the chosen option and date, and is never deleted. Supersede a decision with a new record rather than editing the old one.

@@ -1,3 +1,7 @@
+---
+title: "Agent tools contract"
+---
+
 # Agent tools contract
 
 Status: Proposed v1 tool schemas for packages/tools; not implemented. Delivered in slice 3 of the [implementation plan](../plans/2026-10-09-sdk-implementation-plan.md).

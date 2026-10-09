@@ -1,3 +1,7 @@
+---
+title: "Glossary"
+---
+
 # Glossary
 
 Status: Shared vocabulary for the design documents. Terms here are normative; when another document uses a term differently, fix that document.

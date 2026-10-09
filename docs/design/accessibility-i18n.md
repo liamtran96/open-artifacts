@@ -1,3 +1,7 @@
+---
+title: "Accessibility and localization"
+---
+
 # Accessibility and localization
 
 Status: Requirements for the default editor shell; verified in slice 4 of the [implementation plan](../plans/2026-10-09-sdk-implementation-plan.md). Not yet implemented.

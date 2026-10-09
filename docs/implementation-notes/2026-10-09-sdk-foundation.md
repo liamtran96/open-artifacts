@@ -1,7 +1,11 @@
+---
+title: "SDK foundation: planning checkpoint"
+---
+
 # SDK foundation: planning checkpoint
 
 Date: 2026-10-09
-Status: Documentation and workspace scaffold added; runtime implementation and behavior tests pending.
+Status: Documentation, workspace scaffold, and documentation site added; runtime implementation and behavior tests pending.
 Source: [liamtran96/open-artifacts](https://github.com/liamtran96/open-artifacts) and the request to build a standard SDK, adding a plan and documentation first. No issue/ticket link was supplied.
 
 Additional source request: study an existing open-source editor SDK as an architectural reference. The study notes are kept locally in docs/references and are not committed.
@@ -37,6 +41,16 @@ The editor-SDK reference study adds a central trusted ArtifactEditorController, 
 - Checked the added documentation for local link resolution, status labels, scope consistency, and whitespace errors.
 - Reviewed a pinned source snapshot of the reference editor SDK: package manifests, snapshot loading, store schema/migrations, custom UI and store-event examples, and agent update handlers; cross-checked its official editor, persistence, shapes, UI, and asset docs. Commit hash and details are in the local reference note.
 - No runtime behavior is claimed as verified. The scaffold below only proves the toolchain runs.
+
+## Documentation site (2026-10-09)
+
+`apps/docs` is a Next.js 16 app using Fumadocs 16 (fumadocs-core 16.16.2, fumadocs-mdx 15.4.6, Next 16.3.8). It renders the repository `docs/` folder directly through `defineDocs({ dir: "../../docs" })`; there is no second copy of any page. Each markdown file gained a frontmatter `title` (the H1 text, which stays in the file for GitHub and is stripped at render time). `meta.json` files fix the sidebar order, and `README.md` maps to its folder index via a custom `slugs` function. A remark plugin normalises GitHub-style relative links (bare paths, folder links, links that leave `docs/`) because Fumadocs resolves only `./` and `../` links; mermaid fences render through `remarkMdxMermaid` and a client component. The app shares the workspace ESLint and Prettier config; `eslint-config-next` was dropped because it cannot resolve its parser under pnpm isolated linking.
+
+Commands run and results:
+
+- `pnpm --filter @open-artifacts/docs build`: compiled, 63 static routes generated (19 doc pages plus markdown, llms, and OG image routes).
+- `pnpm --filter @open-artifacts/docs typecheck` and `lint`: clean.
+- Served the build on port 3123 and checked in Chromium: sidebar order, titles, the architecture page, the decisions index table links, and the mermaid diagram. A scan of six representative pages found no unresolved relative `href`; folder links resolve to each folder index and the CONTRIBUTING link points at GitHub.
 
 ## Workspace scaffold (2026-10-09)
 

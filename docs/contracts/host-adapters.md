@@ -1,3 +1,7 @@
+---
+title: "Host adapter contracts"
+---
+
 # Host adapter contracts
 
 Status: Proposed v1 interfaces; nothing is implemented. Names are provisional until slice 2 of the [implementation plan](../plans/2026-10-09-sdk-implementation-plan.md) lands.

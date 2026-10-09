@@ -34,3 +34,9 @@ docs/references/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Next.js and Fumadocs generated files
+.next/
+.source/
+next-env.d.ts
+out/

@@ -1,0 +1,5 @@
+{
+  "title": "Design",
+  "defaultOpen": true,
+  "pages": ["architecture", "glossary", "accessibility-i18n"]
+}

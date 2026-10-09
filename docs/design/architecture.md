@@ -1,3 +1,7 @@
+---
+title: "SDK architecture"
+---
+
 # SDK architecture
 
 Status: Proposed design. The repository has no implementation yet.

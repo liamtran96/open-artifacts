@@ -1,3 +1,7 @@
+---
+title: "0006: Document adapter library"
+---
+
 # 0006: Document adapter library
 
 Status: Decided, 2026-10-09

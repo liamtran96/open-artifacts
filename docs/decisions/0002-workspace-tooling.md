@@ -1,3 +1,7 @@
+---
+title: "0002: Workspace tooling and package versions"
+---
+
 # 0002: Workspace tooling and package versions
 
 Status: Decided (2026-10-09)

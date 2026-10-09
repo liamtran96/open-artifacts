@@ -1,3 +1,7 @@
+---
+title: "Artifact runtime SDK contract"
+---
+
 # Artifact runtime SDK contract
 
 Status: Proposed v1 contract; APIs and packages below do not exist yet.

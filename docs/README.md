@@ -1,4 +1,10 @@
+---
+title: "Documentation index"
+---
+
 # Documentation index
+
+These files are the single source of the documentation. The site under `apps/docs` renders this folder with [Fumadocs](https://www.fumadocs.dev/); run `pnpm --filter @open-artifacts/docs dev` to preview it. Each folder has a `meta.json` that fixes the sidebar order, and a `README.md` is its folder's index page. New users should start with [Getting started](getting-started.md).
 
 | Folder | Contents | Lifecycle |
 | --- | --- | --- |

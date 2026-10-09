@@ -10,6 +10,9 @@ export default tseslint.config(
       "**/coverage/**",
       "**/playwright-report/**",
       "**/test-results/**",
+      "**/.next/**",
+      "**/.source/**",
+      "**/next-env.d.ts",
     ],
   },
   eslint.configs.recommended,
@@ -28,7 +31,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.config.{js,ts}", "**/*.cjs"],
+    files: ["**/*.config.{js,mjs,ts}", "**/*.cjs"],
     extends: [tseslint.configs.disableTypeChecked],
   },
   prettier,

@@ -1,3 +1,7 @@
+---
+title: "SDK implementation plan"
+---
+
 # SDK implementation plan
 
 Date: 2026-10-09

@@ -1,3 +1,7 @@
+---
+title: "0003: HTML component and script allowlist"
+---
+
 # 0003: HTML component and script allowlist
 
 Status: Decided (2026-10-09)

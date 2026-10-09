@@ -1,3 +1,7 @@
+---
+title: "0005: Host authorization deployment"
+---
+
 # 0005: Host authorization deployment
 
 Status: Decided (2026-10-09)

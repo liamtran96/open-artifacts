@@ -1,3 +1,7 @@
+---
+title: "0004: Asset transport and export policy"
+---
+
 # 0004: Asset transport and export policy
 
 Status: Decided (2026-10-09)

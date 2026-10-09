@@ -1,0 +1,12 @@
+{
+  "title": "Open Artifacts",
+  "pages": [
+    "README",
+    "getting-started",
+    "design",
+    "contracts",
+    "decisions",
+    "plans",
+    "implementation-notes"
+  ]
+}

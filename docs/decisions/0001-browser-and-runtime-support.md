@@ -1,3 +1,7 @@
+---
+title: "0001: Browser and runtime support policy"
+---
+
 # 0001: Browser and runtime support policy
 
 Status: Decided (2026-10-09)

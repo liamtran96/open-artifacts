@@ -1,3 +1,7 @@
+---
+title: "0007: Open source license"
+---
+
 # 0007: Open source license
 
 Status: Decided, 2026-10-09

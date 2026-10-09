@@ -28,7 +28,7 @@ Plans and notes:
 - [Implementation plan](docs/plans/2026-10-09-sdk-implementation-plan.md): delivery sequence, acceptance criteria, and verification strategy.
 - [Implementation note](docs/implementation-notes/2026-10-09-sdk-foundation.md): current status, decisions, and verification record.
 
-The full index with folder conventions is in [docs/README.md](docs/README.md). Product reference studies live in `docs/references/`, which is local-only and not committed.
+The full index with folder conventions is in [docs/README.md](docs/README.md). The same folder is rendered as a documentation site by `apps/docs` (Fumadocs); start it with `pnpm --filter @open-artifacts/docs dev`. Product reference studies live in `docs/references/`, which is local-only and not committed.
 
 ## Goal
 
