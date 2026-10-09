@@ -1,0 +1,21 @@
+{
+  "name": "example-plain-html-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A plain JavaScript host page embedding a plain HTML artifact that uses the IIFE runtime build.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src vite.config.ts"
+  },
+  "dependencies": {
+    "@open-artifacts/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  }
+}

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plain HTML artifact</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #1b1b1f;
+        --accent: #2a62d6;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #202026;
+        --fg: #f1f1f5;
+        --accent: #8fb0ff;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 8px;
+        color: var(--accent);
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 2px 12px;
+        margin: 0;
+      }
+      dd {
+        margin: 0;
+        font-family: ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Plain HTML artifact</h1>
+    <dl>
+      <dt>Status</dt>
+      <dd id="status">idle</dd>
+      <dt>Artifact</dt>
+      <dd id="artifact-id">-</dd>
+      <dt>Revision</dt>
+      <dd id="revision">-</dd>
+      <dt>Theme</dt>
+      <dd id="theme">-</dd>
+      <dt>Origin</dt>
+      <dd id="origin"></dd>
+      <dt>Error</dt>
+      <dd id="error">-</dd>
+    </dl>
+    <!-- The one intentional loading path for this artifact: the IIFE global. -->
+    <script src="/runtime.global.js"></script>
+    <script>
+      (function () {
+        var byId = function (id) {
+          return document.getElementById(id);
+        };
+        byId("origin").textContent = window.origin;
+        var client = window.OpenArtifacts.createArtifactClient();
+        client.subscribeStatus(function (status) {
+          byId("status").textContent = status;
+        });
+        client.context.subscribe(function (context) {
+          document.documentElement.dataset.theme = context.theme;
+          byId("artifact-id").textContent = context.artifactId;
+          byId("revision").textContent = String(context.viewedRevision);
+          byId("theme").textContent = context.theme;
+        });
+        client.connect().catch(function (error) {
+          byId("error").textContent = error && error.code ? error.code : String(error);
+        });
+      })();
+    </script>
+  </body>
+</html>

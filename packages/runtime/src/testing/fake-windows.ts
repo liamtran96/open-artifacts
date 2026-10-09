@@ -60,7 +60,7 @@ export class FakeWindow implements MessageListenerTarget {
 let currentSender: FakeWindow | null = null;
 
 /** Run `fn` with `sender` recorded as the source of any postMessage it makes. */
-export function sendingFrom<T>(sender: FakeWindow, fn: () => T): T {
+export function sendingFrom<T>(sender: FakeWindow | null, fn: () => T): T {
   const previous = currentSender;
   currentSender = sender;
   try {
@@ -72,28 +72,30 @@ export function sendingFrom<T>(sender: FakeWindow, fn: () => T): T {
 
 export class FakeFrame implements HostFrame {
   contentWindow: FakeWindow | null;
-  private readonly loadListeners = new Set<() => void>();
 
-  constructor(contentWindow: FakeWindow | null) {
+  constructor(
+    private readonly host: FakeWindow,
+    contentWindow: FakeWindow | null,
+  ) {
     this.contentWindow = contentWindow;
   }
 
-  addEventListener(_type: "load", listener: () => void): void {
-    this.loadListeners.add(listener);
+  /** Simulate a navigation to a new document: `next` becomes the frame's window. */
+  navigate(next: FakeWindow): void {
+    linkFrameWindow(this.host, next);
+    this.contentWindow = next;
   }
+}
 
-  removeEventListener(_type: "load", listener: () => void): void {
-    this.loadListeners.delete(listener);
-  }
-
-  /** Simulate a navigation: optionally swap the content window, then fire load. */
-  reload(next?: FakeWindow): void {
-    if (next) {
-      next.parent = this.contentWindow?.parent ?? null;
-      this.contentWindow = next;
-    }
-    for (const listener of [...this.loadListeners]) listener();
-  }
+/** Make `frame` a child of `host`: messages it posts to `host` carry it as the source. */
+function linkFrameWindow(host: FakeWindow, frame: FakeWindow): void {
+  frame.parent = host;
+  const framePost = FakeWindow.prototype.postMessage.bind(frame);
+  frame.postMessage = (data, origin) => {
+    sendingFrom(host, () => {
+      framePost(data, origin);
+    });
+  };
 }
 
 export interface WindowPair {
@@ -112,23 +114,17 @@ export interface WindowPair {
 export function createWindowPair(): WindowPair {
   const host = new FakeWindow("https://host.example");
   const frame = new FakeWindow("null");
-  frame.parent = host;
-  const iframe = new FakeFrame(frame);
+  const iframe = new FakeFrame(host, frame);
 
-  // The real contentWindow object is what the client compares against, so wrap
-  // postMessage on both sides to stamp the sender.
+  // Messages posted to the host are attributed to whatever window currently
+  // lives in the frame, which is what the bridge compares against.
   const hostPost = host.postMessage.bind(host);
   host.postMessage = (data, origin) => {
-    sendingFrom(frame, () => {
+    sendingFrom(iframe.contentWindow, () => {
       hostPost(data, origin);
     });
   };
-  const framePost = frame.postMessage.bind(frame);
-  frame.postMessage = (data, origin) => {
-    sendingFrom(host, () => {
-      framePost(data, origin);
-    });
-  };
+  linkFrameWindow(host, frame);
 
   return { host, frame, iframe, clientWindow: frame };
 }

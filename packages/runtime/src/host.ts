@@ -34,8 +34,6 @@ import {
 /** The subset of an HTMLIFrameElement the bridge needs. Tests pass doubles. */
 export interface HostFrame {
   readonly contentWindow: MessageTarget | null;
-  addEventListener(type: "load", listener: () => void): void;
-  removeEventListener(type: "load", listener: () => void): void;
 }
 
 /** Mutable part of the context. Identity, kind, and revision are fixed for the session. */
@@ -61,7 +59,7 @@ export interface ArtifactHostBridge {
   setContext(update: ContextUpdate): void;
   /** The context the host currently publishes. */
   getContext(): ArtifactContext;
-  /** Current session identifier; rotates when the frame reloads. */
+  /** Current session identifier; a new document in the frame starts a new one. */
   readonly sessionId: string;
   /** Idempotent: removes listeners and sends teardown to the frame when it exists. */
   dispose(): void;
@@ -88,6 +86,8 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
 
   let context = initial;
   let sessionId = createId();
+  /** The document the current session was issued to; undefined until the first initialize. */
+  let sessionDocumentId: string | undefined;
   let sequence = 1;
   let disposed = false;
 
@@ -108,11 +108,6 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
     data?: Record<string, unknown>,
   ): void {
     send({ jsonrpc: "2.0", id, error: data ? { code, message, data } : { code, message } });
-  }
-
-  function onLoad(): void {
-    // A fresh document in the frame invalidates whatever session the old one held.
-    sessionId = createId();
   }
 
   function onMessage(event: MessageEvent): void {
@@ -147,6 +142,11 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
       });
       return;
     }
+    if (sessionDocumentId !== undefined && sessionDocumentId !== params.documentId) {
+      // A different document now lives in the frame: the old session must not survive it.
+      sessionId = createId();
+    }
+    sessionDocumentId = params.documentId;
     const result: InitializeResult = {
       protocolVersion: PROTOCOL_VERSION,
       capabilities,
@@ -175,12 +175,10 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
     if (disposed) return;
     disposed = true;
     hostWindow.removeEventListener("message", onMessage);
-    iframe.removeEventListener("load", onLoad);
     send({ jsonrpc: "2.0", method: METHOD_TEARDOWN, params: { sessionId } });
   }
 
   hostWindow.addEventListener("message", onMessage);
-  iframe.addEventListener("load", onLoad);
 
   return {
     setContext,

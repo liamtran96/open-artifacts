@@ -22,4 +22,11 @@ export default defineConfig([
     format: ["esm"],
     clean: false,
   },
+  {
+    ...shared,
+    entry: { react: "src/react/index.tsx" },
+    format: ["esm"],
+    external: ["react", "react/jsx-runtime"],
+    clean: false,
+  },
 ]);

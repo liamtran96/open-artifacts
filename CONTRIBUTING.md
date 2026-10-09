@@ -27,12 +27,12 @@ pnpm typecheck      # tsc --noEmit per package
 pnpm lint           # eslint with type-aware rules
 pnpm depcruise      # package boundary rules in .dependency-cruiser.cjs
 pnpm test           # vitest per package
-pnpm e2e            # playwright against the matrix in playwright.config.ts
+pnpm e2e            # builds the runtime, starts the example dev servers, runs playwright
 pnpm format:check   # prettier
 pnpm check          # build, typecheck, lint, depcruise, test
 ```
 
-Run `pnpm exec playwright install` once before `pnpm e2e` to download the browsers.
+Run `pnpm exec playwright install` once before `pnpm e2e` to download the browsers, or `pnpm exec playwright install chromium` and `pnpm e2e --project=chromium` for a single browser.
 
 - Core and the base runtime entry must not import React, DOM types, editor libraries, or model providers. `pnpm depcruise` fails the build on a violation; `lib` in each package's `tsconfig.json` omits `DOM` for core and tools.
 - Every user-visible change to a published package needs a changeset: `pnpm changeset`.

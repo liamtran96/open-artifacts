@@ -98,6 +98,8 @@ export interface JsonRpcError {
 
 export interface InitializeParams {
   protocolVersions: readonly number[];
+  /** Identifies the document instance in the frame; a new document starts a new session. */
+  documentId: string;
 }
 
 export interface InitializeResult {
@@ -241,7 +243,9 @@ export function parseInitializeParams(value: unknown): InitializeParams | undefi
   if (!Array.isArray(versions) || versions.length === 0 || versions.length > 16) return undefined;
   if (!versions.every((v) => typeof v === "number" && Number.isInteger(v) && v > 0))
     return undefined;
-  return { protocolVersions: versions as number[] };
+  const documentId = value.documentId;
+  if (!isNonEmptyString(documentId)) return undefined;
+  return { protocolVersions: versions as number[], documentId };
 }
 
 export function parseInitializeResult(value: unknown): InitializeResult | undefined {
@@ -292,6 +296,34 @@ export function createId(): string {
     for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
   }
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+interface DocumentIdHolder {
+  __openArtifactsDocumentId?: string;
+}
+
+/**
+ * One identifier per document instance, shared by every client created in that
+ * document (including an IIFE and an ESM copy side by side). Stored on the
+ * window object because a navigation replaces it, while a late load event or a
+ * second client does not.
+ */
+export function documentIdFor(target: object): string {
+  const holder = target as DocumentIdHolder;
+  const existing = holder.__openArtifactsDocumentId;
+  if (typeof existing === "string" && existing.length > 0) return existing;
+  const id = createId();
+  try {
+    Object.defineProperty(holder, "__openArtifactsDocumentId", {
+      value: id,
+      configurable: false,
+      enumerable: false,
+      writable: false,
+    });
+  } catch {
+    // A frozen target cannot hold the id; the client falls back to a fresh id per client.
+  }
+  return id;
 }
 
 /** Validate a user-supplied positive, finite duration in milliseconds. */

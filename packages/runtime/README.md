@@ -2,12 +2,13 @@
 
 Artifact-side context/theme client and trusted host bridge. ESM for bundlers and IIFE for plain HTML artifacts.
 
-Status: the v1 context/theme client and host bridge are implemented and unit-tested in process. React hooks, runnable examples, and real-browser verification are pending; see the [implementation note](../../docs/implementation-notes/2026-10-09-sdk-foundation.md).
+Status: the v1 context/theme client, host bridge, and React hooks are implemented, unit-tested in process, and exercised in Chromium through the two examples under `examples/`; see the [implementation note](../../docs/implementation-notes/2026-10-09-sdk-foundation.md).
 
 Entries:
 
 - `@open-artifacts/runtime` (ESM, and IIFE as `window.OpenArtifacts`): `createArtifactClient`, loaded inside the artifact iframe.
 - `@open-artifacts/runtime/host` (ESM): `createArtifactHostBridge`, loaded by the trusted embedding page. Never load it in the iframe.
+- `@open-artifacts/runtime/react` (ESM, React optional peer): `useArtifactClient`, `ArtifactProvider`, `useArtifact`, `useArtifactContext` for React artifacts.
 
 ```ts
 // Inside the artifact

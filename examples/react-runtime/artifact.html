@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>React artifact</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --fg: #1b1b1f;
+        --accent: #b2331f;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #202026;
+        --fg: #f1f1f5;
+        --accent: #ff9b86;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 8px;
+        color: var(--accent);
+      }
+      dl {
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 2px 12px;
+        margin: 0;
+      }
+      dd {
+        margin: 0;
+        font-family: ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- The one intentional loading path for this artifact: the bundled ESM entry. -->
+    <script type="module" src="/src/artifact.tsx"></script>
+  </body>
+</html>

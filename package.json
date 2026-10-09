@@ -13,7 +13,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "e2e": "playwright test --pass-with-no-tests",
+    "e2e": "turbo run build --filter=@open-artifacts/runtime && playwright test --pass-with-no-tests",
     "depcruise": "depcruise packages --config .dependency-cruiser.cjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

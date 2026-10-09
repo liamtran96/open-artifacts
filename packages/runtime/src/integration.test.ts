@@ -106,21 +106,25 @@ describe("runtime client <-> host bridge", () => {
     b.dispose();
   });
 
-  it("a frame reload invalidates the old session so the old document's traffic is ignored", async () => {
-    const { host, iframe, clientWindow, frame } = createWindowPair();
+  it("a new document in the frame gets a new session and the old document's client stops receiving updates", async () => {
+    const { host, iframe, clientWindow } = createWindowPair();
     const bridge = createArtifactHostBridge({ iframe, window: host, context });
     const oldClient = createArtifactClient({ window: clientWindow });
     await oldClient.connect();
     const oldSession = bridge.sessionId;
 
     const fresh = new FakeWindow("null");
-    iframe.reload(fresh);
+    iframe.navigate(fresh);
+    const newClient = createArtifactClient({ window: fresh });
+    await newClient.connect();
     expect(bridge.sessionId).not.toBe(oldSession);
+
     bridge.setContext({ theme: "dark" });
     await flush();
+    expect(newClient.context.get()?.theme).toBe("dark");
     expect(oldClient.context.get()?.theme).toBe("light");
-    expect(frame.sent.at(-1)?.data).not.toMatchObject({ method: "oa/context-changed" });
     oldClient.dispose();
+    newClient.dispose();
     bridge.dispose();
   });
 

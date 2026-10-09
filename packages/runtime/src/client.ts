@@ -24,6 +24,7 @@ import {
   SUPPORTED_PROTOCOL_VERSIONS,
   assertPositiveFinite,
   createId,
+  documentIdFor,
   isProtocolVersion,
   parseContextChangedParams,
   parseInitializeResult,
@@ -36,6 +37,8 @@ export type ArtifactClientStatus =
 
 export type ContextListener = (context: ArtifactContext) => void;
 
+export type StatusListener = (status: ArtifactClientStatus) => void;
+
 export interface ArtifactClient {
   /** Negotiate with the host. Repeated calls share the in-flight attempt or return the active connection. */
   connect(): Promise<Connection>;
@@ -47,6 +50,8 @@ export interface ArtifactClient {
   };
   /** Current lifecycle phase. */
   readonly status: ArtifactClientStatus;
+  /** Emits every status transition; returns an idempotent unsubscribe. Does not emit the current value. */
+  subscribeStatus(listener: StatusListener): () => void;
   /** Idempotent and terminal: releases listeners and timers, rejects pending work with DISPOSED. */
   dispose(): void;
 }
@@ -136,7 +141,21 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
   let session: ActiveSession | undefined;
   let context: ArtifactContext | undefined;
   let listening = false;
+  const documentId = self ? documentIdFor(self) : createId();
   const listeners = new Set<ContextListener>();
+  const statusListeners = new Set<StatusListener>();
+
+  function setStatus(next: ArtifactClientStatus): void {
+    if (status === next) return;
+    status = next;
+    for (const listener of [...statusListeners]) {
+      try {
+        listener(next);
+      } catch (error) {
+        onListenerError(error);
+      }
+    }
+  }
 
   function startListening(): void {
     if (listening || !self) return;
@@ -173,7 +192,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     pending = undefined;
     clearAttemptTimers(attempt);
     if (status !== "disposed") {
-      status = "idle";
+      setStatus("idle");
       stopListening();
     }
     attempt.reject(new ArtifactRuntimeError(code, message));
@@ -187,7 +206,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
           jsonrpc: "2.0",
           id: requestId,
           method: METHOD_INITIALIZE,
-          params: { protocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS] },
+          params: { protocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS], documentId },
         },
         targetOrigin,
       );
@@ -219,7 +238,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     const protocolVersion = parsed.protocolVersion;
     pending = undefined;
     clearAttemptTimers(attempt);
-    status = "connected";
+    setStatus("connected");
     session = {
       connection: Object.freeze({
         protocolVersion,
@@ -266,7 +285,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     if (!parsed || session?.sessionId !== parsed.sessionId) return;
     session = undefined;
     context = undefined;
-    status = "disconnected";
+    setStatus("disconnected");
     stopListening();
   }
 
@@ -334,7 +353,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
       queued: new Map(),
     };
     pending = attempt;
-    status = "connecting";
+    setStatus("connecting");
     startListening();
     sendInitialize(attempt.requestId);
     attempt.retryTimer = setInterval(() => {
@@ -366,12 +385,13 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
 
   function dispose(): void {
     if (status === "disposed") return;
-    status = "disposed";
+    setStatus("disposed");
     const attempt = pending;
     pending = undefined;
     session = undefined;
     context = undefined;
     listeners.clear();
+    statusListeners.clear();
     stopListening();
     if (attempt) {
       clearAttemptTimers(attempt);
@@ -389,6 +409,13 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     },
     get status() {
       return status;
+    },
+    subscribeStatus(listener) {
+      if (status === "disposed") return () => undefined;
+      statusListeners.add(listener);
+      return () => {
+        statusListeners.delete(listener);
+      };
     },
     dispose,
   };

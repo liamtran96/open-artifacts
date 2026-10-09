@@ -39,11 +39,11 @@ Implement and verify one working slice at a time. Record completed behavior and 
 - [x] Build a framework-independent runtime client and a trusted host bridge.
 - [x] Implement protocol negotiation, context snapshots, theme updates, and deterministic teardown according to runtime-sdk.md.
 - [x] Provide an ESM build with declarations and an IIFE build for plain HTML.
-- [ ] Add a small React integration using the same client; keep React optional.
-- [ ] Demonstrate an HTML artifact and a React artifact receiving the same context and live theme updates from a host.
-- [ ] Verify iframe isolation and connection lifecycle in a real browser.
+- [x] Add a small React integration using the same client; keep React optional.
+- [x] Demonstrate an HTML artifact and a React artifact receiving the same context and live theme updates from a host.
+- [x] Verify iframe isolation and connection lifecycle in a real browser (Chromium on 2026-10-09; Firefox and WebKit remain for slice 4's cross-browser pass).
 
-Exit condition: both examples connect, display the host's artifact ID and viewed revision, react to light/dark changes, and clean up without stale messages or unresolved connection promises. This slice does not claim that editing or persistence works.
+Exit condition: both examples connect, display the host's artifact ID and viewed revision, react to light/dark changes, and clean up without stale messages or unresolved connection promises. This slice does not claim that editing or persistence works. Met on 2026-10-09; evidence in the [implementation note](../implementation-notes/2026-10-09-sdk-foundation.md).
 
 ### 2. Saved HTML artifacts
 

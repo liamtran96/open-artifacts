@@ -13,11 +13,15 @@ const context: ArtifactContext = {
   locale: "en-US",
 };
 
-const initialize = (id: string | number = "req_1", protocolVersions: unknown = [1]): unknown => ({
+const initialize = (
+  id: string | number = "req_1",
+  protocolVersions: unknown = [1],
+  documentId: unknown = "doc_1",
+): unknown => ({
   jsonrpc: "2.0",
   id,
   method: "oa/initialize",
-  params: { protocolVersions },
+  params: { protocolVersions, documentId },
 });
 
 function lastSent(frame: FakeWindow): Record<string, unknown> {
@@ -102,6 +106,11 @@ describe("createArtifactHostBridge", () => {
     host.deliver({ jsonrpc: "2.0", id: 1, method: "oa/write" }, frame);
     expect(lastSent(frame).error).toMatchObject({ code: -32601 });
 
+    host.deliver(initialize(4, [1], ""), frame);
+    expect(lastSent(frame).error).toMatchObject({
+      code: -32602,
+      data: { code: "INVALID_MESSAGE" },
+    });
     host.deliver(initialize(2, "1"), frame);
     expect(lastSent(frame).error).toMatchObject({
       code: -32602,
@@ -166,18 +175,23 @@ describe("createArtifactHostBridge", () => {
     bridge.dispose();
   });
 
-  it("rotates the session when the frame loads a new document", () => {
+  it("keeps one session per document and starts a new one when a different document initializes", () => {
     const { host, frame, iframe } = createWindowPair();
     const bridge = createArtifactHostBridge({ iframe, window: host, context });
+    host.deliver(initialize("a", [1], "doc_1"), frame);
     const first = bridge.sessionId;
-    const next = new FakeWindow("null");
-    iframe.reload(next);
-    expect(bridge.sessionId).not.toBe(first);
+    // A second client in the same document, even after the frame's load event, shares the session.
+    host.deliver(initialize("b", [1], "doc_1"), frame);
+    expect(bridge.sessionId).toBe(first);
+    expect((lastSent(frame).result as { sessionId: string }).sessionId).toBe(first);
 
+    const next = new FakeWindow("null");
+    iframe.navigate(next);
     // The old window is no longer the bound frame.
-    host.deliver(initialize(), frame);
-    expect(frame.sent).toHaveLength(0);
-    host.deliver(initialize(), next);
+    host.deliver(initialize("c", [1], "doc_2"), frame);
+    expect(frame.sent).toHaveLength(2);
+    host.deliver(initialize("c", [1], "doc_2"), next);
+    expect(bridge.sessionId).not.toBe(first);
     expect((lastSent(next).result as { sessionId: string }).sessionId).toBe(bridge.sessionId);
     bridge.dispose();
   });
@@ -210,7 +224,7 @@ describe("createArtifactHostBridge", () => {
     }).not.toThrow();
     const closed = new FakeWindow("null");
     closed.closed = true;
-    iframe.reload(closed);
+    iframe.navigate(closed);
     expect(() => {
       bridge.setContext({ theme: "light" });
     }).not.toThrow();

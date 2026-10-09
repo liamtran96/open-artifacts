@@ -88,6 +88,23 @@ Commands run and results (from `packages/runtime` unless noted):
 
 Not verified: behavior in a real browser (opaque-origin iframe, actual `MessageEvent.source` semantics, listener/timer leaks across reload), the IIFE consumed from plain HTML, and the React entry. Those remain the open slice 1 items.
 
+## React entry, examples, and browser verification (2026-10-09)
+
+Slice 1's last three items. `packages/runtime/src/react/index.tsx` is built as the `./react` export with React as an optional peer dependency (`useArtifactClient`, `ArtifactProvider`, `useArtifact`, `useArtifactContext`); the base entry still does not import React, which `pnpm depcruise` enforces. The client gained `subscribeStatus` so the hook can mirror teardown. `examples/plain-html-runtime` (host in plain TypeScript, artifact a classic-script HTML page using `window.OpenArtifacts`) and `examples/react-runtime` (React host and React artifact) are Vite apps; each embeds its artifact with `sandbox="allow-scripts"` so it runs with an opaque origin. `e2e/runtime-examples.spec.ts` drives both through the dev servers that `playwright.config.ts` now starts.
+
+One protocol change came out of the browser run. The bridge originally rotated its session on the iframe `load` event, but a document's scripts run before its own load event, so the artifact's initialize was answered with a session that the following load event immediately invalidated and later theme updates were ignored. Sessions are now bound to a per-document `documentId` that the client sends in initialize: clients in the same document share a session, a different document starts a new one, and the `load` event is not used. The contract records this.
+
+Two dev-server details are worth knowing: Vite's default CORS policy only allows its own origin, so both examples set `server.cors.origin` to `*` to let the opaque-origin frame load module scripts and the HMR client, and the plain example serves the IIFE at `/runtime.global.js` through a small Vite plugin instead of copying `dist` into the example.
+
+Commands run and results:
+
+- `packages/runtime`: `pnpm typecheck` and `pnpm lint` clean; `pnpm test` 4 files, 36 tests passed (client 16, host 8, integration 6, react 5). The react tests mount with `react-dom/client` under jsdom and cover connect on mount, theme mirroring, Strict Mode remount without listener leaks, teardown to disconnected, a typed TIMEOUT error, and the provider.
+- `pnpm exec playwright install chromium`, then `npx playwright test --project=chromium`: 10 passed in 11.5 s (5 scenarios times 2 examples): opaque origin (`window.origin === "null"`) with identity and revision shown, live theme toggles in both directions, destroy and recreate receiving the current theme under a new session, frame reload reconnecting and still following updates, and no console errors across the lifecycle. Firefox and WebKit were not run locally.
+- Example `typecheck` and `lint`: clean for both examples and for `e2e/`.
+- Workspace: `turbo run lint typecheck test` 27 of 27 tasks successful across the six packages, the docs app, and both examples; `pnpm depcruise` no violations (13 modules, 20 dependencies); `turbo run build` for both examples succeeded (the plain example emits `runtime.global.js` next to its pages); `pnpm format:check` clean after `prettier --write`.
+
+Not verified: Firefox and WebKit, mobile viewports, and the production `vite build` output served statically (the examples were verified through the dev servers). The `react` bundle duplicates the client code rather than sharing a chunk with the base entry; acceptable for now, revisit if size matters.
+
 ## Remaining work and maintenance
 
 Implement the plan's unchecked slices and append actual test commands/results here. Public package names, toolchain/browser support, safe HTML input policy, and asset behavior remain implementation decisions identified in the plan. Do not claim a completed HTML editing SDK when only the context/theme slice is implemented.

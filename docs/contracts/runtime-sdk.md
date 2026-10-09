@@ -4,7 +4,7 @@ title: "Artifact runtime SDK contract"
 
 # Artifact runtime SDK contract
 
-Status: v1 contract. The client and host bridge are implemented in `packages/runtime` (2026-10-09) and verified by unit and in-process integration tests; the React entry, examples, and real-browser checks are still pending. See the [implementation note](../implementation-notes/2026-10-09-sdk-foundation.md).
+Status: v1 contract, implemented in `packages/runtime` (2026-10-09): client, host bridge, and React entry, with unit and in-process integration tests and a Chromium run of both examples. See the [implementation note](../implementation-notes/2026-10-09-sdk-foundation.md).
 
 This is the first technical slice in the [SDK plan](../plans/2026-10-09-sdk-implementation-plan.md). It serves JavaScript/TypeScript running inside isolated HTML or React previews. The trusted editor embedding API is a separate concern; see [architecture](../design/architecture.md).
 
@@ -12,7 +12,7 @@ The editor-controller design in [architecture](../design/architecture.md) inform
 
 ## Initial API
 
-Package name: @open-artifacts/runtime (workspace name; npm availability must be checked before publication). The client exposes a read-only `status` ("idle", "connecting", "connected", "disconnected", "disposed") in addition to the members below, and `createArtifactClient` accepts `window`, `targetOrigin`, `timeoutMs`, `retryIntervalMs`, and `onListenerError` options.
+Package name: @open-artifacts/runtime (workspace name; npm availability must be checked before publication). The client exposes a read-only `status` ("idle", "connecting", "connected", "disconnected", "disposed") and `subscribeStatus(listener)` in addition to the members below, and `createArtifactClient` accepts `window`, `targetOrigin`, `timeoutMs`, `retryIntervalMs`, and `onListenerError` options.
 
 ```ts
 type ArtifactKind = "html" | "document" | "layout" | "app";
@@ -61,9 +61,9 @@ Expose a separate trusted entry point, @open-artifacts/runtime/host:
 - getContext() returns the context currently published; sessionId exposes the current session identifier, which rotates on every frame load.
 - Options: capabilities (default: all v1 capabilities), targetOrigin (default "*"), and window (default globalThis.window).
 
-Bind the host listener before navigating/loading the artifact. The host remains authoritative for identity and revision; ignore any client-supplied replacements. A frame load after an established session invalidates that session. Navigating to a different artifact or revision disposes and recreates the bridge with new host context.
+Bind the host listener before navigating/loading the artifact. The host remains authoritative for identity and revision; ignore any client-supplied replacements. Sessions are bound to the document in the frame: every client sends a per-document `documentId` in initialize, clients in the same document share one session, and the first initialize from a different document (a reload or navigation) starts a new session. The host does not use the iframe `load` event, because a document's scripts run before its own load event fires. Navigating to a different artifact or revision disposes and recreates the bridge with new host context.
 
-Plain HTML and React examples use this same host API. Artifact React hooks consume the same core client through an optional /react entry; React is a peer dependency and must not be imported by the base runtime entry.
+Plain HTML and React examples use this same host API. Artifact React hooks consume the same core client through the optional @open-artifacts/runtime/react entry; React is an optional peer dependency and is never imported by the base runtime entry. The entry exports `useArtifactClient(options)`, which creates one client per mounted effect instance, connects it, and returns `{ client, status, context, connection, error }`; `ArtifactProvider`, which owns one such client for a subtree; and `useArtifact()` / `useArtifactContext()`, which read it. Effect cleanup disposes the client, so a Strict Mode remount creates a fresh one.
 
 ## Protocol and lifecycle
 
@@ -71,7 +71,7 @@ Use [JSON-RPC 2.0](https://www.jsonrpc.org/specification) over window.postMessag
 
 | Method | Direction | Behavior |
 | --- | --- | --- |
-| oa/initialize | Client -> host request | Advertise supported protocol versions; return selected version, public capabilities, host context, and a fresh session ID |
+| oa/initialize | Client -> host request | Advertise supported protocol versions and the document ID; return selected version, public capabilities, host context, and the session ID for that document |
 | oa/context-changed | Host -> client notification | Supply the session ID, a strictly increasing context sequence, and a full context snapshot |
 | oa/teardown | Host -> client notification | End the matching connection and invalidate cached context |
 
@@ -83,7 +83,7 @@ sequenceDiagram
     H->>F: load artifact
     F->>F: listen for parent messages
     loop every 250 ms until 5 s deadline
-        F->>H: oa/initialize { protocolVersions }
+        F->>H: oa/initialize { protocolVersions, documentId }
     end
     H-->>F: result { protocolVersion, capabilities, context, sessionId, sequence: 3 }
     Note over H,F: theme change while initialize is pending
@@ -95,7 +95,7 @@ sequenceDiagram
     F->>F: invalidate connection, reject pending with DISCONNECTED
 ```
 
-The initialize result includes the current context sequence. Requests use unique IDs; responses must match the active request and sender. A valid repeat of the same initialization request within the current frame session returns the same negotiated result. Once connected, a second SDK client may receive the same session context; it does not receive additional permissions.
+The initialize result includes the current context sequence. Requests use unique IDs; responses must match the active request and sender. A valid repeat of the same initialization request from the same document returns the same session and the current sequence. The `documentId` is generated once per document and stored on the window object so an IIFE and an ESM client in the same document share it; it is not a secret. Once connected, a second SDK client may receive the same session context; it does not receive additional permissions.
 
 The client listens before sending initialize. Retry the same initialization request on a bounded interval until a default 5-second deadline, covering host/frame startup ordering. Default retry interval: 250 ms. Allow test/configuration overrides, validate positive finite bounds, and stop retries on success, failure, or disposal. Queue only the newest matching-session context notification that arrives during initialization, then apply it if its sequence exceeds the initialization snapshot. Because the session ID is unknown until the result arrives, the client keeps the newest notification per observed session (bounded to eight sessions) and selects the matching one on success. This prevents theme changes during startup from being lost or applied out of order.
 
@@ -117,7 +117,7 @@ Build ESM JavaScript and declarations for authoring/bundling, and an IIFE exposi
 
 The preview host loads the chosen pinned runtime before authored code and records the runtime version/hash in build metadata. Use exactly one intentional loading path per artifact; bundling ESM must not also inject an unused global client. A mock host for local development implements the same initialization/context contract and never fabricates production authorization.
 
-Provide examples/plain-html-runtime and examples/react-runtime, each with a host that switches theme, shows artifact identity/revision, and can destroy/recreate the preview. These paths are planned, not runnable examples yet.
+examples/plain-html-runtime and examples/react-runtime each run a host that switches theme, shows artifact identity/revision, and can destroy/recreate the preview, with the artifact in an iframe sandboxed to `allow-scripts` only (opaque origin). The plain example's artifact loads the IIFE through a classic script tag; the React example's artifact is bundled by Vite and uses the /react entry. Run `pnpm build` once, then `pnpm --filter example-plain-html-runtime dev` or `pnpm --filter example-react-runtime dev`. `pnpm e2e` starts both and drives them with Playwright.
 
 ## Acceptance behaviors
 

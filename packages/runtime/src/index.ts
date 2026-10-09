@@ -17,6 +17,7 @@ export type {
   ArtifactClientStatus,
   ClientWindow,
   ContextListener,
+  StatusListener,
 } from "./client.js";
 
 export {
