@@ -30,8 +30,8 @@ Implement and verify one working slice at a time. Record completed behavior and 
 
 ### 1. Runtime context/theme foundation
 
-- [ ] Establish a TypeScript workspace with build, typecheck, lint, and test scripts.
-- [ ] Enforce package dependency rules: core/base runtime have no React or editor-library imports; optional adapters load independently.
+- [x] Establish a TypeScript workspace with build, typecheck, lint, and test scripts.
+- [x] Enforce package dependency rules: core/base runtime have no React or editor-library imports; optional adapters load independently.
 - [ ] Build a framework-independent runtime client and a trusted host bridge.
 - [ ] Implement protocol negotiation, context snapshots, theme updates, and deterministic teardown according to runtime-sdk.md.
 - [ ] Provide an ESM build with declarations and an IIFE build for plain HTML.
@@ -96,7 +96,7 @@ Test externally observable behavior through public APIs. Add each regression or 
 | End-to-end | Agent create -> user edit/save -> agent update -> reopen -> export -> restore |
 | Distribution | ESM and IIFE consumption, declaration checks, optional React, core independent of editor dependencies |
 
-The workspace has no executable checks yet. Add and document real commands in slice 1; do not treat this planning checkpoint as a passing runtime test suite.
+The workspace scaffold runs build, typecheck, lint, dependency rules, unit tests, and an empty Playwright suite; the commands are listed in [CONTRIBUTING](../../CONTRIBUTING.md) and the results in the [implementation note](../implementation-notes/2026-10-09-sdk-foundation.md). Package tests only assert the scaffold exports; no runtime behavior is verified yet.
 
 ## Later work and decisions
 

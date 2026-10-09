@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "types": []
+  },
+  "include": ["src", "tsup.config.ts", "vitest.config.ts"]
+}

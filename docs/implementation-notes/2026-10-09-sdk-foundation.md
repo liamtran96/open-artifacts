@@ -1,7 +1,7 @@
 # SDK foundation: planning checkpoint
 
 Date: 2026-10-09
-Status: Documentation added; runtime implementation and execution tests pending.
+Status: Documentation and workspace scaffold added; runtime implementation and behavior tests pending.
 Source: [liamtran96/open-artifacts](https://github.com/liamtran96/open-artifacts) and the request to build a standard SDK, adding a plan and documentation first. No issue/ticket link was supplied.
 
 Additional source request: study an existing open-source editor SDK as an architectural reference. The study notes are kept locally in docs/references and are not committed.
@@ -36,7 +36,24 @@ The editor-SDK reference study adds a central trusted ArtifactEditorController, 
 - Checked the working tree before changes; README.md was already untracked and its existing content was preserved.
 - Checked the added documentation for local link resolution, status labels, scope consistency, and whitespace errors.
 - Reviewed a pinned source snapshot of the reference editor SDK: package manifests, snapshot loading, store schema/migrations, custom UI and store-event examples, and agent update handlers; cross-checked its official editor, persistence, shapes, UI, and asset docs. Commit hash and details are in the local reference note.
-- No package, build, runtime, or application tests exist yet. No runtime behavior is claimed as verified.
+- No runtime behavior is claimed as verified. The scaffold below only proves the toolchain runs.
+
+## Workspace scaffold (2026-10-09)
+
+Slice 1's first two items. Six package skeletons exist under `packages/`: core, runtime, embed, react, tools, adapter-html. Each exports only a `packageName` constant; the future adapters (document, layout, app) are not scaffolded.
+
+Pinned versions: TypeScript 5.9.3 (typescript-eslint caps TypeScript below 6.1), tsup 8.5.1, Turborepo 2.11.7, Vitest 5.0.3, Playwright 1.64.0, dependency-cruiser 18.5.0, Changesets 3.0.3, ESLint 10.12.0 with typescript-eslint 8.71.1, Prettier 3.9.9, pnpm 10.29.3, Node 26.1.0 locally.
+
+Commands run and results:
+
+- `pnpm install`: 294 packages, strict isolated linking, exact versions saved.
+- `pnpm build`: 6 of 6 tasks succeeded; ESM plus declarations for every package, IIFE bundle `dist/index.global.js` for runtime.
+- `pnpm typecheck`: 6 of 6 succeeded after removing `rootDir` from package tsconfigs so config files typecheck.
+- `pnpm lint`: 6 of 6 succeeded with `strictTypeChecked` and `stylisticTypeChecked`.
+- `pnpm depcruise`: no violations across the packages. A deliberate probe with four violations (React in core, an undeclared workspace package in core, GrapesJS in tools, and a relative import from embed into core's `src`) was reported as four errors, then removed. Core and tools additionally omit `DOM` from their TypeScript `lib`.
+- `pnpm test`: 6 package suites, 6 tests passed, each asserting the scaffold export.
+- `pnpm e2e`: passes with no tests via `--pass-with-no-tests`; browsers are not yet installed on this machine.
+- `pnpm format:check`: clean. Markdown is excluded from Prettier to avoid reflowing the design documents.
 
 ## Remaining work and maintenance
 

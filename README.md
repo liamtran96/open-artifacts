@@ -2,7 +2,7 @@
 
 An embeddable artifact SDK for products with AI agents. Agents create documents, layouts, HTML pages, and apps; users edit them directly using an editor suited to each artifact type. Both continue working from the same saved artifact.
 
-**Status:** Design stage. This repository currently documents the proposed SDK; packages, APIs, and runnable examples are not implemented yet.
+**Status:** Design stage. This repository documents the proposed SDK and contains a workspace scaffold with empty package skeletons; APIs and runnable examples are not implemented yet.
 
 ## Documentation
 

@@ -18,9 +18,24 @@ Open Artifacts is at the design stage. Contributions right now are documentation
 
 ## Code changes
 
-Tooling is not yet chosen; see [decision 0002](docs/decisions/0002-workspace-tooling.md). Once slice 1 lands, this section will list the exact install, build, typecheck, lint, and test commands. Until then:
+Tooling follows [decision 0002](docs/decisions/0002-workspace-tooling.md): pnpm workspaces, Turborepo, tsup, Vitest, Playwright, dependency-cruiser, Changesets, ESLint, and Prettier. Node 22.12 or newer and pnpm 10 or newer are required.
 
-- Core and the base runtime entry must not import React, DOM types, editor libraries, or model providers.
+```sh
+pnpm install
+pnpm build          # tsup, ESM for every package plus IIFE for runtime
+pnpm typecheck      # tsc --noEmit per package
+pnpm lint           # eslint with type-aware rules
+pnpm depcruise      # package boundary rules in .dependency-cruiser.cjs
+pnpm test           # vitest per package
+pnpm e2e            # playwright against the matrix in playwright.config.ts
+pnpm format:check   # prettier
+pnpm check          # build, typecheck, lint, depcruise, test
+```
+
+Run `pnpm exec playwright install` once before `pnpm e2e` to download the browsers.
+
+- Core and the base runtime entry must not import React, DOM types, editor libraries, or model providers. `pnpm depcruise` fails the build on a violation; `lib` in each package's `tsconfig.json` omits `DOM` for core and tools.
+- Every user-visible change to a published package needs a changeset: `pnpm changeset`.
 - Each slice ships with the tests named in the plan's verification table. Tests exercise public APIs, not internal structure.
 - Record commands actually run and their results in the current implementation note.
 

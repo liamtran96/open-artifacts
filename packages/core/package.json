@@ -1,0 +1,32 @@
+{
+  "name": "@open-artifacts/core",
+  "version": "0.0.0",
+  "description": "Typed artifact controller, revision model, adapter contracts, and shared events. No DOM, React, editor, or model-provider dependency.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "browserslist": [
+    "extends ../../.browserslistrc"
+  ]
+}
