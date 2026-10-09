@@ -10,23 +10,16 @@ export default defineConfig({
   use: {
     trace: "on-first-retry",
   },
-  // Example dev servers for e2e/runtime-examples.spec.ts. Build the runtime first (pnpm e2e does).
+  // Example dev servers for e2e/runtime-examples.spec.ts; pnpm e2e builds the runtime first.
   webServer: [
-    {
-      command:
-        "pnpm --filter example-plain-html-runtime exec vite --host 127.0.0.1 --port 4173 --strictPort",
-      url: "http://127.0.0.1:4173/",
-      reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
-    },
-    {
-      command:
-        "pnpm --filter example-react-runtime exec vite --host 127.0.0.1 --port 4174 --strictPort",
-      url: "http://127.0.0.1:4174/",
-      reuseExistingServer: !process.env.CI,
-      timeout: 60_000,
-    },
-  ],
+    ["example-plain-html-runtime", 4173],
+    ["example-react-runtime", 4174],
+  ].map(([pkg, port]) => ({
+    command: `pnpm --filter ${String(pkg)} exec vite --host 127.0.0.1 --port ${String(port)} --strictPort`,
+    url: `http://127.0.0.1:${String(port)}/`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
+  })),
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },

@@ -27,7 +27,7 @@ pnpm typecheck      # tsc --noEmit per package
 pnpm lint           # eslint with type-aware rules
 pnpm depcruise      # package boundary rules in .dependency-cruiser.cjs
 pnpm test           # vitest per package
-pnpm e2e            # builds the runtime, starts the example dev servers, runs playwright
+pnpm e2e            # builds the examples (and the runtime they depend on), starts their dev servers, runs playwright
 pnpm format:check   # prettier
 pnpm check          # build, typecheck, lint, depcruise, test
 ```

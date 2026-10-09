@@ -24,7 +24,6 @@ const context: ArtifactContext = {
 
 function Host() {
   const [theme, setTheme] = useState<ArtifactTheme>(context.theme);
-  const [previewKey, setPreviewKey] = useState(0);
   const [mounted, setMounted] = useState(true);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const bridgeRef = useRef<ArtifactHostBridge | undefined>(undefined);
@@ -78,7 +77,6 @@ function Host() {
           type="button"
           disabled={mounted}
           onClick={() => {
-            setPreviewKey((k) => k + 1);
             setMounted(true);
           }}
         >
@@ -100,7 +98,6 @@ function Host() {
         {mounted ? (
           <iframe
             id="preview"
-            key={previewKey}
             ref={frameRef}
             title="Artifact preview"
             sandbox="allow-scripts"

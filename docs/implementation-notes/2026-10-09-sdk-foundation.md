@@ -71,7 +71,7 @@ Commands run and results:
 
 ## Runtime client and host bridge (2026-10-09)
 
-Slice 1's third, fourth, and fifth items. `packages/runtime/src` now holds `protocol.ts` (envelope, context, and parameter validators shared by both sides), `client.ts` (`createArtifactClient`), `host.ts` (`createArtifactHostBridge`, published through `src/host/index.ts` as the `./host` export), and `testing/fake-windows.ts` (an in-process host/iframe pair whose postMessage delivers on a microtask with the sender as `source`). The scaffold's `packageName` test was replaced.
+Slice 1's third, fourth, and fifth items. `packages/runtime/src` now holds `protocol.ts` (envelope, context, and parameter validators shared by both sides), `client.ts` (`createArtifactClient`), `host.ts` (`createArtifactHostBridge`, the `./host` export), and `testing/fake-windows.ts` (an in-process host/iframe pair whose postMessage delivers on a microtask with the sender as `source`). The scaffold's `packageName` test was replaced.
 
 Behavior implemented from the contract: JSON-RPC 2.0 over postMessage with the `oa/initialize`, `oa/context-changed`, and `oa/teardown` methods; a 16 KiB size gate; initialize retried every 250 ms with the same request ID until a 5 s deadline (both overridable, validated as positive finite); shared in-flight connect; per-session queueing of context notifications that arrive during initialization; strictly increasing sequence checks; session rotation on frame load; teardown to a disconnected state that allows explicit reconnection; terminal, idempotent dispose that rejects pending work with DISPOSED. The host answers only `event.source === iframe.contentWindow`, returns the same session on a repeated initialize, and replies with -32601, -32602, -32600, or -32000 (`PROTOCOL_MISMATCH`) as the contract describes.
 
@@ -90,7 +90,7 @@ Not verified: behavior in a real browser (opaque-origin iframe, actual `MessageE
 
 ## React entry, examples, and browser verification (2026-10-09)
 
-Slice 1's last three items. `packages/runtime/src/react/index.tsx` is built as the `./react` export with React as an optional peer dependency (`useArtifactClient`, `ArtifactProvider`, `useArtifact`, `useArtifactContext`); the base entry still does not import React, which `pnpm depcruise` enforces. The client gained `subscribeStatus` so the hook can mirror teardown. `examples/plain-html-runtime` (host in plain TypeScript, artifact a classic-script HTML page using `window.OpenArtifacts`) and `examples/react-runtime` (React host and React artifact) are Vite apps; each embeds its artifact with `sandbox="allow-scripts"` so it runs with an opaque origin. `e2e/runtime-examples.spec.ts` drives both through the dev servers that `playwright.config.ts` now starts.
+Slice 1's last three items. `packages/runtime/src/react.tsx` is built as the `./react` export with React as an optional peer dependency (`useArtifactClient`, `ArtifactProvider`, `useArtifact`, `useArtifactContext`); the base entry still does not import React, which `pnpm depcruise` enforces. The client gained `subscribeStatus` so the hook can mirror teardown. `examples/plain-html-runtime` (host in plain TypeScript, artifact a classic-script HTML page using `window.OpenArtifacts`) and `examples/react-runtime` (React host and React artifact) are Vite apps; each embeds its artifact with `sandbox="allow-scripts"` so it runs with an opaque origin. `e2e/runtime-examples.spec.ts` drives both through the dev servers that `playwright.config.ts` now starts.
 
 One protocol change came out of the browser run. The bridge originally rotated its session on the iframe `load` event, but a document's scripts run before its own load event, so the artifact's initialize was answered with a session that the following load event immediately invalidated and later theme updates were ignored. Sessions are now bound to a per-document `documentId` that the client sends in initialize: clients in the same document share a session, a different document starts a new one, and the `load` event is not used. The contract records this.
 
@@ -103,7 +103,7 @@ Commands run and results:
 - Example `typecheck` and `lint`: clean for both examples and for `e2e/`.
 - Workspace: `turbo run lint typecheck test` 27 of 27 tasks successful across the six packages, the docs app, and both examples; `pnpm depcruise` no violations (13 modules, 20 dependencies); `turbo run build` for both examples succeeded (the plain example emits `runtime.global.js` next to its pages); `pnpm format:check` clean after `prettier --write`.
 
-Not verified: Firefox and WebKit, mobile viewports, and the production `vite build` output served statically (the examples were verified through the dev servers). The `react` bundle duplicates the client code rather than sharing a chunk with the base entry; acceptable for now, revisit if size matters.
+Not verified: Firefox and WebKit, mobile viewports, and the production `vite build` output served statically (the examples were verified through the dev servers). The three ESM entries are built with code splitting, so an app that loads more than one shares a single copy of the client and protocol and a single `ArtifactRuntimeError` class.
 
 ## Remaining work and maintenance
 

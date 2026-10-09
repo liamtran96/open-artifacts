@@ -5,14 +5,15 @@
 
 import type {
   ArtifactContext,
-  ArtifactRuntimeErrorCode,
+  ClientWindow,
   Connection,
   ContextChangedParams,
   JsonRpcError,
   JsonRpcId,
-  MessageListenerTarget,
   MessageTarget,
 } from "./protocol.js";
+
+export type { ClientWindow } from "./protocol.js";
 import {
   ArtifactRuntimeError,
   DEFAULT_CONNECT_TIMEOUT_MS,
@@ -24,12 +25,16 @@ import {
   SUPPORTED_PROTOCOL_VERSIONS,
   assertPositiveFinite,
   createId,
+  defaultWindow,
   documentIdFor,
   isProtocolVersion,
+  isWithinSizeLimit,
+  jsonRpcErrors,
   parseContextChangedParams,
   parseInitializeResult,
   parseMessage,
   parseTeardownParams,
+  sdkErrorCodeOf,
 } from "./protocol.js";
 
 export type ArtifactClientStatus =
@@ -54,11 +59,6 @@ export interface ArtifactClient {
   subscribeStatus(listener: StatusListener): () => void;
   /** Idempotent and terminal: releases listeners and timers, rejects pending work with DISPOSED. */
   dispose(): void;
-}
-
-/** The window the client runs in. A real Window satisfies this; tests pass doubles. */
-export interface ClientWindow extends MessageListenerTarget {
-  parent: MessageTarget | null;
 }
 
 export interface ArtifactClientOptions {
@@ -99,18 +99,15 @@ interface ActiveSession {
   sequence: number;
 }
 
-function defaultWindow(): ClientWindow | undefined {
-  const w = (globalThis as { window?: unknown }).window;
-  return typeof w === "object" && w !== null ? (w as ClientWindow) : undefined;
-}
-
 function defaultListenerError(error: unknown): void {
   console.error("[open-artifacts] context listener threw", error);
 }
 
-function mapHostError(error: JsonRpcError): ArtifactRuntimeError {
-  const sdkCode: ArtifactRuntimeErrorCode | undefined = error.data?.code;
+/** Translate a host's JSON-RPC error reply to initialize into the SDK's error vocabulary. */
+function hostErrorToRuntimeError(error: JsonRpcError): ArtifactRuntimeError {
+  const sdkCode = sdkErrorCodeOf(error);
   if (sdkCode) return new ArtifactRuntimeError(sdkCode, error.message);
+  // A parent that answers JSON-RPC but lacks oa/initialize is a foreign host, not a bug.
   if (error.code === JSON_RPC_METHOD_NOT_FOUND) {
     return new ArtifactRuntimeError(
       "PROTOCOL_MISMATCH",
@@ -145,16 +142,19 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
   const listeners = new Set<ContextListener>();
   const statusListeners = new Set<StatusListener>();
 
+  /** Call one subscriber, isolating its failure from the caller and from other subscribers. */
+  function safeCall<T>(listener: (value: T) => void, value: T): void {
+    try {
+      listener(value);
+    } catch (error) {
+      onListenerError(error);
+    }
+  }
+
   function setStatus(next: ArtifactClientStatus): void {
     if (status === next) return;
     status = next;
-    for (const listener of [...statusListeners]) {
-      try {
-        listener(next);
-      } catch (error) {
-        onListenerError(error);
-      }
-    }
+    for (const listener of [...statusListeners]) safeCall(listener, next);
   }
 
   function startListening(): void {
@@ -169,14 +169,9 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     listening = false;
   }
 
-  function emit(snapshot: ArtifactContext): void {
-    for (const listener of [...listeners]) {
-      try {
-        listener(snapshot);
-      } catch (error) {
-        onListenerError(error);
-      }
-    }
+  function applyContext(next: ArtifactContext): void {
+    context = next;
+    for (const listener of [...listeners]) safeCall(listener, next);
   }
 
   function clearAttemptTimers(attempt: PendingAttempt): void {
@@ -186,7 +181,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     attempt.deadlineTimer = undefined;
   }
 
-  function failAttempt(code: ArtifactRuntimeErrorCode, message: string): void {
+  function failAttempt(error: ArtifactRuntimeError): void {
     const attempt = pending;
     if (!attempt) return;
     pending = undefined;
@@ -195,29 +190,24 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
       setStatus("idle");
       stopListening();
     }
-    attempt.reject(new ArtifactRuntimeError(code, message));
+    attempt.reject(error);
   }
 
-  function sendInitialize(requestId: string): void {
-    if (!parent) return;
+  function post(message: unknown): void {
     try {
-      parent.postMessage(
-        {
-          jsonrpc: "2.0",
-          id: requestId,
-          method: METHOD_INITIALIZE,
-          params: { protocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS], documentId },
-        },
-        targetOrigin,
-      );
+      parent?.postMessage(message, targetOrigin);
     } catch {
       // A detached or closed parent surfaces as a timeout rather than a thrown error.
     }
   }
 
-  function applyContext(next: ArtifactContext): void {
-    context = next;
-    emit(next);
+  function sendInitialize(requestId: string): void {
+    post({
+      jsonrpc: "2.0",
+      id: requestId,
+      method: METHOD_INITIALIZE,
+      params: { protocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS], documentId },
+    });
   }
 
   function handleResponse(id: JsonRpcId, result: unknown): void {
@@ -225,13 +215,17 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     if (attempt?.requestId !== id) return;
     const parsed = parseInitializeResult(result);
     if (!parsed) {
-      failAttempt("INVALID_MESSAGE", "Host returned a malformed initialize result");
+      failAttempt(
+        new ArtifactRuntimeError("INVALID_MESSAGE", "Host returned a malformed initialize result"),
+      );
       return;
     }
     if (!isProtocolVersion(parsed.protocolVersion)) {
       failAttempt(
-        "PROTOCOL_MISMATCH",
-        `Host selected protocol version ${String(parsed.protocolVersion)}; this client supports ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}`,
+        new ArtifactRuntimeError(
+          "PROTOCOL_MISMATCH",
+          `Host selected protocol version ${String(parsed.protocolVersion)}; this client supports ${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}`,
+        ),
       );
       return;
     }
@@ -259,10 +253,8 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
   }
 
   function handleError(id: JsonRpcId | null, error: JsonRpcError): void {
-    const attempt = pending;
-    if (attempt?.requestId !== id) return;
-    const mapped = mapHostError(error);
-    failAttempt(mapped.code, mapped.message);
+    if (pending?.requestId !== id) return;
+    failAttempt(hostErrorToRuntimeError(error));
   }
 
   function handleContextChanged(params: unknown): void {
@@ -291,6 +283,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
 
   function onMessage(event: MessageEvent): void {
     if (parent === undefined || event.source !== parent) return;
+    if (!isWithinSizeLimit(event.data)) return;
     const message = parseMessage(event.data);
     if (!message) return;
     switch (message.type) {
@@ -306,18 +299,10 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
         break;
       case "request":
         // v1 exposes no client-side methods.
-        try {
-          parent.postMessage(
-            {
-              jsonrpc: "2.0",
-              id: message.id,
-              error: { code: JSON_RPC_METHOD_NOT_FOUND, message: "Method not found" },
-            },
-            targetOrigin,
-          );
-        } catch {
-          // Ignore send failures for unsolicited requests.
-        }
+        post({ jsonrpc: "2.0", id: message.id, error: jsonRpcErrors.methodNotFound() });
+        break;
+      case "invalid":
+        // The host is trusted; its malformed traffic is dropped, never answered.
         break;
     }
   }
@@ -361,8 +346,10 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
     }, retryIntervalMs);
     attempt.deadlineTimer = setTimeout(() => {
       failAttempt(
-        "TIMEOUT",
-        `Host did not answer ${METHOD_INITIALIZE} within ${String(timeoutMs)} ms`,
+        new ArtifactRuntimeError(
+          "TIMEOUT",
+          `Host did not answer ${METHOD_INITIALIZE} within ${String(timeoutMs)} ms`,
+        ),
       );
     }, timeoutMs);
     return promise;
@@ -371,13 +358,7 @@ export function createArtifactClient(options: ArtifactClientOptions = {}): Artif
   function subscribe(listener: ContextListener): () => void {
     if (status === "disposed") return () => undefined;
     listeners.add(listener);
-    if (context) {
-      try {
-        listener(context);
-      } catch (error) {
-        onListenerError(error);
-      }
-    }
+    if (context) safeCall(listener, context);
     return () => {
       listeners.delete(listener);
     };

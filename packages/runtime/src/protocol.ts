@@ -93,7 +93,8 @@ export type JsonRpcId = string | number;
 export interface JsonRpcError {
   code: number;
   message: string;
-  data?: { code?: ArtifactRuntimeErrorCode; [key: string]: unknown };
+  /** Free-form; an SDK error code, when present, lives in `data.code`. */
+  data?: Record<string, unknown>;
 }
 
 export interface InitializeParams {
@@ -125,7 +126,9 @@ export type ParsedMessage =
   | { type: "request"; id: JsonRpcId; method: string; params: unknown }
   | { type: "notification"; method: string; params: unknown }
   | { type: "response"; id: JsonRpcId; result: unknown }
-  | { type: "error"; id: JsonRpcId | null; error: JsonRpcError };
+  | { type: "error"; id: JsonRpcId | null; error: JsonRpcError }
+  /** A JSON-RPC-shaped object that is not a usable envelope; `id` is set when one was recoverable. */
+  | { type: "invalid"; id: JsonRpcId | undefined };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -145,7 +148,10 @@ function isJsonRpcId(value: unknown): value is JsonRpcId {
 
 const encoder = new TextEncoder();
 
-/** True when the structured-clone payload serializes within the control-message limit. */
+/**
+ * True when the structured-clone payload serializes within the control-message limit.
+ * Callers run this once per inbound message, before parseMessage.
+ */
 export function isWithinSizeLimit(data: unknown): boolean {
   let serialized: string;
   try {
@@ -154,60 +160,93 @@ export function isWithinSizeLimit(data: unknown): boolean {
     return false;
   }
   if (typeof serialized !== "string") return false;
+  // UTF-8 is between 1 and 3 bytes per UTF-16 code unit, so most payloads are decided
+  // without encoding; only the band in between needs the exact byte count.
+  if (serialized.length > MAX_MESSAGE_BYTES) return false;
+  if (serialized.length * 3 <= MAX_MESSAGE_BYTES) return true;
   return encoder.encode(serialized).byteLength <= MAX_MESSAGE_BYTES;
 }
 
 /**
  * Classify an incoming payload as a JSON-RPC request, notification, response, or error.
- * Returns undefined for anything that is not a well-formed, size-bounded envelope.
+ * Returns undefined for payloads that are not objects at all, and `invalid` (with the
+ * request id when one is recoverable) for objects that are not a well-formed envelope.
  */
 export function parseMessage(data: unknown): ParsedMessage | undefined {
-  if (!isRecord(data) || data.jsonrpc !== "2.0") return undefined;
-  if (!isWithinSizeLimit(data)) return undefined;
-
+  if (!isRecord(data)) return undefined;
   const hasId = "id" in data;
   const id = data.id;
+  const invalid: ParsedMessage = { type: "invalid", id: isJsonRpcId(id) ? id : undefined };
+  if (data.jsonrpc !== "2.0") return invalid;
 
   if ("method" in data) {
     const method = data.method;
-    if (!isNonEmptyString(method)) return undefined;
+    if (!isNonEmptyString(method)) return invalid;
     const params = data.params;
-    if (params !== undefined && !isRecord(params)) return undefined;
+    if (params !== undefined && !isRecord(params)) return invalid;
     if (hasId) {
-      if (!isJsonRpcId(id)) return undefined;
+      if (!isJsonRpcId(id)) return invalid;
       return { type: "request", id, method, params };
     }
     return { type: "notification", method, params };
   }
 
   if ("error" in data) {
-    if (!hasId || !(id === null || isJsonRpcId(id))) return undefined;
+    if (!hasId || !(id === null || isJsonRpcId(id))) return invalid;
     const error = data.error;
-    if (!isRecord(error)) return undefined;
-    const code = error.code;
-    const message = error.message;
+    if (!isRecord(error)) return invalid;
+    const { code, message, data: errorData } = error;
     if (typeof code !== "number" || !Number.isInteger(code) || typeof message !== "string") {
-      return undefined;
+      return invalid;
     }
-    const rawData = error.data;
-    const parsed: JsonRpcError = { code, message };
-    if (isRecord(rawData)) {
-      const { code: sdkCode, ...rest } = rawData;
-      parsed.data =
-        typeof sdkCode === "string" && ERROR_CODES.has(sdkCode)
-          ? { ...rest, code: sdkCode as ArtifactRuntimeErrorCode }
-          : rest;
-    }
-    return { type: "error", id, error: parsed };
+    return {
+      type: "error",
+      id,
+      error: isRecord(errorData) ? { code, message, data: errorData } : { code, message },
+    };
   }
 
   if ("result" in data) {
-    if (!hasId || !isJsonRpcId(id)) return undefined;
+    if (!hasId || !isJsonRpcId(id)) return invalid;
     return { type: "response", id, result: data.result };
   }
 
-  return undefined;
+  return invalid;
 }
+
+/** The SDK error code a host attached to a JSON-RPC error, if any. */
+export function sdkErrorCodeOf(error: JsonRpcError): ArtifactRuntimeErrorCode | undefined {
+  const code = error.data?.code;
+  return typeof code === "string" && ERROR_CODES.has(code)
+    ? (code as ArtifactRuntimeErrorCode)
+    : undefined;
+}
+
+/** The JSON-RPC errors the host sends; each carries its SDK code in `data` where one applies. */
+export const jsonRpcErrors = {
+  invalidRequest: (): JsonRpcError => ({
+    code: JSON_RPC_INVALID_REQUEST,
+    message: "Invalid Request",
+    data: { code: "INVALID_MESSAGE" },
+  }),
+  invalidParams: (): JsonRpcError => ({
+    code: JSON_RPC_INVALID_PARAMS,
+    message: "Invalid params",
+    data: { code: "INVALID_MESSAGE" },
+  }),
+  methodNotFound: (): JsonRpcError => ({
+    code: JSON_RPC_METHOD_NOT_FOUND,
+    message: "Method not found",
+  }),
+  protocolMismatch: (): JsonRpcError => ({
+    code: JSON_RPC_PROTOCOL_MISMATCH,
+    message: "Unsupported protocol version",
+    data: {
+      code: "PROTOCOL_MISMATCH",
+      supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
+    },
+  }),
+} as const;
 
 /** Validate a full context object and return an immutable copy holding only known fields. */
 export function parseContext(value: unknown): ArtifactContext | undefined {
@@ -285,16 +324,14 @@ export function parseTeardownParams(value: unknown): TeardownParams | undefined 
   return { sessionId };
 }
 
-/** Random identifier for requests and sessions. Not a secret; it only binds lifecycle traffic. */
+/**
+ * Random identifier for requests and sessions. Not a secret; it only binds lifecycle traffic.
+ * randomUUID is unavailable in insecure browsing contexts, where getRandomValues still works.
+ */
 export function createId(): string {
-  const c = globalThis.crypto as Crypto | undefined;
-  if (c && typeof c.randomUUID === "function") return c.randomUUID();
-  const bytes = new Uint8Array(16);
-  if (c && typeof c.getRandomValues === "function") {
-    c.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
-  }
+  const c = globalThis.crypto;
+  if (typeof c.randomUUID === "function") return c.randomUUID();
+  const bytes = c.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -310,20 +347,8 @@ interface DocumentIdHolder {
  */
 export function documentIdFor(target: object): string {
   const holder = target as DocumentIdHolder;
-  const existing = holder.__openArtifactsDocumentId;
-  if (typeof existing === "string" && existing.length > 0) return existing;
-  const id = createId();
-  try {
-    Object.defineProperty(holder, "__openArtifactsDocumentId", {
-      value: id,
-      configurable: false,
-      enumerable: false,
-      writable: false,
-    });
-  } catch {
-    // A frozen target cannot hold the id; the client falls back to a fresh id per client.
-  }
-  return id;
+  holder.__openArtifactsDocumentId ??= createId();
+  return holder.__openArtifactsDocumentId;
 }
 
 /** Validate a user-supplied positive, finite duration in milliseconds. */
@@ -342,4 +367,14 @@ export interface MessageTarget {
 export interface MessageListenerTarget {
   addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
   removeEventListener(type: "message", listener: (event: MessageEvent) => void): void;
+}
+
+/** The window an artifact client runs in. A real Window satisfies this; tests pass doubles. */
+export interface ClientWindow extends MessageListenerTarget {
+  parent: MessageTarget | null;
+}
+
+/** The browser window when running in one; undefined elsewhere. */
+export function defaultWindow(): ClientWindow | undefined {
+  return typeof window === "object" ? window : undefined;
 }

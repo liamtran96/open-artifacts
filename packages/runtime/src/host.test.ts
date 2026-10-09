@@ -1,17 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { createArtifactHostBridge } from "./host.js";
-import type { ArtifactContext } from "./protocol.js";
 import { MAX_MESSAGE_BYTES } from "./protocol.js";
 import { FakeWindow, createWindowPair } from "./testing/fake-windows.js";
-
-const context: ArtifactContext = {
-  artifactId: "art_1",
-  viewedRevision: 3,
-  kind: "html",
-  theme: "light",
-  locale: "en-US",
-};
+import { sampleContext as context } from "./testing/helpers.js";
 
 const initialize = (
   id: string | number = "req_1",
@@ -24,11 +16,10 @@ const initialize = (
   params: { protocolVersions, documentId },
 });
 
-function lastSent(frame: FakeWindow): Record<string, unknown> {
-  const last = frame.sent.at(-1);
-  if (!last) throw new Error("nothing sent to frame");
-  return last.data as Record<string, unknown>;
-}
+const last = (window: FakeWindow): Record<string, unknown> => {
+  if (window.lastSent === undefined) throw new Error("nothing sent to window");
+  return window.lastSent as Record<string, unknown>;
+};
 
 describe("createArtifactHostBridge", () => {
   it("validates the host context and capabilities up front", () => {
@@ -66,12 +57,11 @@ describe("createArtifactHostBridge", () => {
       context,
       capabilities: ["context.read"],
     });
-    const stranger = new FakeWindow("https://evil.example");
-    host.deliver(initialize(), stranger);
+    host.deliver(initialize(), new FakeWindow());
     expect(frame.sent).toHaveLength(0);
 
     host.deliver(initialize("req_1", [3, 1, 2]), frame);
-    const reply = lastSent(frame);
+    const reply = last(frame);
     expect(reply.id).toBe("req_1");
     expect(reply.result).toEqual({
       protocolVersion: 1,
@@ -83,7 +73,7 @@ describe("createArtifactHostBridge", () => {
     expect(frame.sent.at(-1)?.targetOrigin).toBe("*");
 
     host.deliver(initialize("req_1"), frame);
-    expect(lastSent(frame).result).toMatchObject({ sessionId: bridge.sessionId, sequence: 1 });
+    expect(last(frame).result).toMatchObject({ sessionId: bridge.sessionId, sequence: 1 });
     bridge.dispose();
   });
 
@@ -91,7 +81,7 @@ describe("createArtifactHostBridge", () => {
     const { host, frame, iframe } = createWindowPair();
     const bridge = createArtifactHostBridge({ iframe, window: host, context });
     host.deliver(initialize("req_2", [2]), frame);
-    expect(lastSent(frame).error).toEqual({
+    expect(last(frame).error).toEqual({
       code: -32000,
       message: "Unsupported protocol version",
       data: { code: "PROTOCOL_MISMATCH", supportedProtocolVersions: [1] },
@@ -104,29 +94,21 @@ describe("createArtifactHostBridge", () => {
     const bridge = createArtifactHostBridge({ iframe, window: host, context });
 
     host.deliver({ jsonrpc: "2.0", id: 1, method: "oa/write" }, frame);
-    expect(lastSent(frame).error).toMatchObject({ code: -32601 });
+    expect(last(frame).error).toMatchObject({ code: -32601 });
 
     host.deliver(initialize(4, [1], ""), frame);
-    expect(lastSent(frame).error).toMatchObject({
-      code: -32602,
-      data: { code: "INVALID_MESSAGE" },
-    });
+    expect(last(frame).error).toMatchObject({ code: -32602, data: { code: "INVALID_MESSAGE" } });
     host.deliver(initialize(2, "1"), frame);
-    expect(lastSent(frame).error).toMatchObject({
-      code: -32602,
-      data: { code: "INVALID_MESSAGE" },
-    });
+    expect(last(frame).error).toMatchObject({ code: -32602, data: { code: "INVALID_MESSAGE" } });
 
     host.deliver({ jsonrpc: "2.0", id: 3 }, frame);
-    expect(lastSent(frame).error).toMatchObject({
-      code: -32600,
-      data: { code: "INVALID_MESSAGE" },
-    });
-    expect(lastSent(frame).id).toBe(3);
+    expect(last(frame).error).toMatchObject({ code: -32600, data: { code: "INVALID_MESSAGE" } });
+    expect(last(frame).id).toBe(3);
 
     const count = frame.sent.length;
     host.deliver({ jsonrpc: "2.0", method: "oa/context-changed", params: {} }, frame);
     host.deliver("garbage", frame);
+    host.deliver({ jsonrpc: "2.0" }, frame);
     host.deliver(
       {
         jsonrpc: "2.0",
@@ -147,13 +129,13 @@ describe("createArtifactHostBridge", () => {
     expect(frame.sent).toHaveLength(0);
 
     bridge.setContext({ theme: "dark" });
-    expect(lastSent(frame)).toEqual({
+    expect(last(frame)).toEqual({
       jsonrpc: "2.0",
       method: "oa/context-changed",
       params: { sessionId: bridge.sessionId, sequence: 2, context: { ...context, theme: "dark" } },
     });
     bridge.setContext({ locale: "fr-FR" });
-    expect(lastSent(frame).params).toMatchObject({
+    expect(last(frame).params).toMatchObject({
       sequence: 3,
       context: { theme: "dark", locale: "fr-FR" },
     });
@@ -168,7 +150,7 @@ describe("createArtifactHostBridge", () => {
     expect(bridge.getContext().theme).toBe("dark");
 
     host.deliver(initialize(), frame);
-    expect(lastSent(frame).result).toMatchObject({
+    expect(last(frame).result).toMatchObject({
       sequence: 3,
       context: { theme: "dark", locale: "fr-FR" },
     });
@@ -183,16 +165,16 @@ describe("createArtifactHostBridge", () => {
     // A second client in the same document, even after the frame's load event, shares the session.
     host.deliver(initialize("b", [1], "doc_1"), frame);
     expect(bridge.sessionId).toBe(first);
-    expect((lastSent(frame).result as { sessionId: string }).sessionId).toBe(first);
+    expect((last(frame).result as { sessionId: string }).sessionId).toBe(first);
 
-    const next = new FakeWindow("null");
+    const next = new FakeWindow();
     iframe.navigate(next);
     // The old window is no longer the bound frame.
     host.deliver(initialize("c", [1], "doc_2"), frame);
     expect(frame.sent).toHaveLength(2);
     host.deliver(initialize("c", [1], "doc_2"), next);
     expect(bridge.sessionId).not.toBe(first);
-    expect((lastSent(next).result as { sessionId: string }).sessionId).toBe(bridge.sessionId);
+    expect((last(next).result as { sessionId: string }).sessionId).toBe(bridge.sessionId);
     bridge.dispose();
   });
 
@@ -202,7 +184,7 @@ describe("createArtifactHostBridge", () => {
     bridge.dispose();
     bridge.dispose();
     expect(frame.sent).toHaveLength(1);
-    expect(lastSent(frame)).toEqual({
+    expect(last(frame)).toEqual({
       jsonrpc: "2.0",
       method: "oa/teardown",
       params: { sessionId: bridge.sessionId },
@@ -222,7 +204,7 @@ describe("createArtifactHostBridge", () => {
     expect(() => {
       bridge.setContext({ theme: "dark" });
     }).not.toThrow();
-    const closed = new FakeWindow("null");
+    const closed = new FakeWindow();
     closed.closed = true;
     iframe.navigate(closed);
     expect(() => {

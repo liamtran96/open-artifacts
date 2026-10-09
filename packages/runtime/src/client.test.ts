@@ -2,20 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createArtifactClient } from "./client.js";
 import type { ArtifactContext } from "./protocol.js";
-import { ArtifactRuntimeError, MAX_MESSAGE_BYTES } from "./protocol.js";
+import { MAX_MESSAGE_BYTES } from "./protocol.js";
 import { FakeWindow, createWindowPair, flush } from "./testing/fake-windows.js";
-
-const context: ArtifactContext = {
-  artifactId: "art_1",
-  viewedRevision: 3,
-  kind: "html",
-  theme: "light",
-  locale: "en-US",
-};
+import { expectCode, sampleContext as context } from "./testing/helpers.js";
 
 function lastInitialize(host: FakeWindow): { id: string; params: unknown } {
-  const last = host.sent.at(-1)?.data as
-    { id: string; method: string; params: unknown } | undefined;
+  const last = host.lastSent as { id: string; method: string; params: unknown } | undefined;
   if (last?.method !== "oa/initialize") throw new Error("no initialize request sent");
   return { id: last.id, params: last.params };
 }
@@ -33,12 +25,6 @@ function okResult(id: string, overrides: Record<string, unknown> = {}): Record<s
       ...overrides,
     },
   };
-}
-
-async function expectCode(promise: Promise<unknown>, code: string): Promise<void> {
-  await expect(promise).rejects.toSatisfy(
-    (e: unknown) => e instanceof ArtifactRuntimeError && e.code === code,
-  );
 }
 
 describe("createArtifactClient", () => {
@@ -176,7 +162,7 @@ describe("createArtifactClient", () => {
     const client = createArtifactClient({ window: clientWindow, timeoutMs: 1000 });
     const promise = client.connect();
     const { id } = lastInitialize(host);
-    const stranger = new FakeWindow("https://evil.example");
+    const stranger = new FakeWindow();
     frame.deliver(okResult(id), stranger);
     frame.deliver(okResult("someone-else"), host);
     frame.deliver("not an object", host);
@@ -290,46 +276,31 @@ describe("createArtifactClient", () => {
     await promise;
     const listener = vi.fn();
     client.context.subscribe(listener);
-    const params = (sequence: number, sessionId = "sess_1"): unknown => ({
+    const params = (sequence: number, sessionId = "sess_1"): Record<string, unknown> => ({
       sessionId,
       sequence,
       context: { ...context, theme: "dark" },
     });
-    frame.deliver(
-      { jsonrpc: "2.0", method: "oa/context-changed", params: params(4, "stale") },
-      host,
-    );
-    frame.deliver({ jsonrpc: "2.0", method: "oa/context-changed", params: params(3) }, host);
-    frame.deliver({ jsonrpc: "2.0", method: "oa/context-changed", params: params(2) }, host);
-    frame.deliver(
-      { jsonrpc: "2.0", method: "oa/context-changed", params: params(4) },
-      new FakeWindow(),
-    );
-    frame.deliver(
-      {
-        jsonrpc: "2.0",
-        method: "oa/context-changed",
-        params: { sessionId: "sess_1", sequence: 4, context: { theme: "dark" } },
-      },
-      host,
-    );
-    frame.deliver(
-      {
-        jsonrpc: "2.0",
-        method: "oa/context-changed",
-        params: { ...(params(4) as object), padding: "x".repeat(MAX_MESSAGE_BYTES) },
-      },
-      host,
-    );
+    const notify = (p: unknown, source: unknown = host): void => {
+      frame.deliver({ jsonrpc: "2.0", method: "oa/context-changed", params: p }, source);
+    };
+    notify(params(4, "stale"));
+    notify(params(3));
+    notify(params(2));
+    notify(params(4), new FakeWindow());
+    notify({ sessionId: "sess_1", sequence: 4, context: { theme: "dark" } });
+    notify({ ...params(4), padding: "x".repeat(MAX_MESSAGE_BYTES) });
     expect(listener).toHaveBeenCalledTimes(1);
     expect(client.context.get()?.theme).toBe("light");
-    frame.deliver({ jsonrpc: "2.0", method: "oa/context-changed", params: params(4) }, host);
+    notify(params(4));
     expect(client.context.get()?.theme).toBe("dark");
   });
 
   it("disconnects on a matching teardown, clears context, and allows explicit reconnection", async () => {
     const { host, clientWindow, frame } = createWindowPair();
     const client = createArtifactClient({ window: clientWindow });
+    const statuses: string[] = [];
+    client.subscribeStatus((s) => statuses.push(s));
     const promise = client.connect();
     frame.deliver(okResult(lastInitialize(host).id), host);
     await promise;
@@ -344,6 +315,13 @@ describe("createArtifactClient", () => {
     expect(client.status).toBe("connecting");
     frame.deliver(okResult(lastInitialize(host).id, { sessionId: "sess_2", sequence: 1 }), host);
     await expect(again).resolves.toMatchObject({ context });
+    expect(statuses).toEqual([
+      "connecting",
+      "connected",
+      "disconnected",
+      "connecting",
+      "connected",
+    ]);
   });
 
   it("does not let a late response to an old request restore a connection", async () => {
@@ -385,7 +363,7 @@ describe("createArtifactClient", () => {
     const client = createArtifactClient({ window: clientWindow });
     void client.connect().catch(() => undefined);
     frame.deliver({ jsonrpc: "2.0", id: 7, method: "oa/anything" }, host);
-    const reply = host.sent.at(-1)?.data as { id: number; error: { code: number } };
+    const reply = host.lastSent as { id: number; error: { code: number } };
     expect(reply.id).toBe(7);
     expect(reply.error.code).toBe(-32601);
     client.dispose();

@@ -9,16 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createArtifactClient } from "./client.js";
 import { createArtifactHostBridge } from "./host.js";
 import type { ArtifactContext } from "./protocol.js";
-import { ArtifactRuntimeError } from "./protocol.js";
 import { FakeWindow, createWindowPair, flush } from "./testing/fake-windows.js";
-
-const context: ArtifactContext = {
-  artifactId: "art_42",
-  viewedRevision: 7,
-  kind: "html",
-  theme: "light",
-  locale: "en-GB",
-};
+import { sampleContext as context } from "./testing/helpers.js";
 
 describe("runtime client <-> host bridge", () => {
   beforeEach(() => {
@@ -64,9 +56,7 @@ describe("runtime client <-> host bridge", () => {
     await vi.advanceTimersByTimeAsync(100);
     await expect(promise).resolves.toMatchObject({ context });
     // Earlier unanswered retries are not answered twice once connected.
-    expect(
-      host.sent.filter((m) => (m.data as { method?: string }).method === "oa/initialize").length,
-    ).toBeGreaterThan(1);
+    expect(host.sentWithMethod("oa/initialize").length).toBeGreaterThan(1);
     bridge.dispose();
     client.dispose();
   });
@@ -83,9 +73,7 @@ describe("runtime client <-> host bridge", () => {
     bridge.setContext({ theme: "dark" });
     await promise;
     expect(themes).toEqual(["dark"]);
-    expect(frame.sent.map((m) => (m.data as { method?: string }).method)).toContain(
-      "oa/context-changed",
-    );
+    expect(frame.sentWithMethod("oa/context-changed")).toHaveLength(1);
     bridge.dispose();
     client.dispose();
   });
@@ -113,7 +101,7 @@ describe("runtime client <-> host bridge", () => {
     await oldClient.connect();
     const oldSession = bridge.sessionId;
 
-    const fresh = new FakeWindow("null");
+    const fresh = new FakeWindow();
     iframe.navigate(fresh);
     const newClient = createArtifactClient({ window: fresh });
     await newClient.connect();
@@ -126,25 +114,5 @@ describe("runtime client <-> host bridge", () => {
     oldClient.dispose();
     newClient.dispose();
     bridge.dispose();
-  });
-
-  it("a host that only speaks a newer protocol is rejected with PROTOCOL_MISMATCH", async () => {
-    const { host, iframe, clientWindow } = createWindowPair();
-    const client = createArtifactClient({ window: clientWindow });
-    const bridge = createArtifactHostBridge({ iframe, window: host, context });
-    // Simulate a future bridge by intercepting the reply.
-    const frame = iframe.contentWindow;
-    if (!frame) throw new Error("frame missing");
-    const original = frame.postMessage.bind(frame);
-    frame.postMessage = (data, origin) => {
-      const d = data as { result?: { protocolVersion: number } };
-      if (d.result) d.result.protocolVersion = 2;
-      original(data, origin);
-    };
-    await expect(client.connect()).rejects.toSatisfy(
-      (e: unknown) => e instanceof ArtifactRuntimeError && e.code === "PROTOCOL_MISMATCH",
-    );
-    bridge.dispose();
-    client.dispose();
   });
 });

@@ -1,7 +1,9 @@
 /**
+ * @open-artifacts/runtime/host
+ *
  * Trusted host bridge. Runs in the embedding product, binds to one iframe, and
  * answers that iframe's initialize requests with host-validated context.
- * See docs/contracts/runtime-sdk.md. Published as @open-artifacts/runtime/host.
+ * Never load this inside an artifact iframe. See docs/contracts/runtime-sdk.md.
  */
 
 import type {
@@ -9,26 +11,40 @@ import type {
   ArtifactTheme,
   Capability,
   InitializeResult,
+  JsonRpcError,
+  JsonRpcId,
   MessageListenerTarget,
   MessageTarget,
 } from "./protocol.js";
 import {
   ALL_CAPABILITIES,
-  JSON_RPC_INVALID_PARAMS,
-  JSON_RPC_INVALID_REQUEST,
-  JSON_RPC_METHOD_NOT_FOUND,
-  JSON_RPC_PROTOCOL_MISMATCH,
   METHOD_CONTEXT_CHANGED,
   METHOD_INITIALIZE,
   METHOD_TEARDOWN,
   PROTOCOL_VERSION,
-  SUPPORTED_PROTOCOL_VERSIONS,
   createId,
+  defaultWindow,
   isCapability,
   isWithinSizeLimit,
+  jsonRpcErrors,
   parseContext,
   parseInitializeParams,
   parseMessage,
+} from "./protocol.js";
+
+export {
+  ArtifactRuntimeError,
+  MAX_MESSAGE_BYTES,
+  PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+} from "./protocol.js";
+export type {
+  ArtifactContext,
+  ArtifactKind,
+  ArtifactRuntimeErrorCode,
+  ArtifactTheme,
+  Capability,
+  ProtocolVersion,
 } from "./protocol.js";
 
 /** The subset of an HTMLIFrameElement the bridge needs. Tests pass doubles. */
@@ -65,9 +81,8 @@ export interface ArtifactHostBridge {
   dispose(): void;
 }
 
-function defaultWindow(): MessageListenerTarget | undefined {
-  const w = (globalThis as { window?: unknown }).window;
-  return typeof w === "object" && w !== null ? (w as MessageListenerTarget) : undefined;
+function noWindow(): never {
+  throw new TypeError("createArtifactHostBridge: no window to listen on");
 }
 
 export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): ArtifactHostBridge {
@@ -80,9 +95,7 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
   const capabilities: readonly Capability[] = Object.freeze([...new Set(requested)]);
   const targetOrigin = options.targetOrigin ?? "*";
   const { iframe } = options;
-  const listenerTarget = options.window ?? defaultWindow();
-  if (!listenerTarget) throw new TypeError("createArtifactHostBridge: no window to listen on");
-  const hostWindow: MessageListenerTarget = listenerTarget;
+  const hostWindow = options.window ?? defaultWindow() ?? noWindow();
 
   let context = initial;
   let sessionId = createId();
@@ -92,22 +105,15 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
   let disposed = false;
 
   function send(message: unknown): void {
-    const target = iframe.contentWindow;
-    if (!target) return;
     try {
-      target.postMessage(message, targetOrigin);
+      iframe.contentWindow?.postMessage(message, targetOrigin);
     } catch {
-      // A navigating or detached frame cannot be reached; the next load rebinds the session.
+      // A navigating or detached frame cannot be reached; the next document starts a new session.
     }
   }
 
-  function sendError(
-    id: string | number | null,
-    code: number,
-    message: string,
-    data?: Record<string, unknown>,
-  ): void {
-    send({ jsonrpc: "2.0", id, error: data ? { code, message, data } : { code, message } });
+  function sendError(id: JsonRpcId | null, error: JsonRpcError): void {
+    send({ jsonrpc: "2.0", id, error });
   }
 
   function onMessage(event: MessageEvent): void {
@@ -115,31 +121,25 @@ export function createArtifactHostBridge(options: ArtifactHostBridgeOptions): Ar
     if (!source || event.source !== source) return;
     if (!isWithinSizeLimit(event.data)) return;
     const message = parseMessage(event.data);
-    if (!message) {
-      // Malformed traffic from the bound frame: answer when an id is recoverable so a
-      // client is never left pending, otherwise drop it.
-      const id = (event.data as { id?: unknown } | null)?.id;
-      if (typeof id === "string" || typeof id === "number") {
-        sendError(id, JSON_RPC_INVALID_REQUEST, "Invalid Request", { code: "INVALID_MESSAGE" });
-      }
+    if (!message) return;
+    if (message.type === "invalid") {
+      // Answer when an id is recoverable so a client is never left pending; otherwise drop.
+      if (message.id !== undefined) sendError(message.id, jsonRpcErrors.invalidRequest());
       return;
     }
     if (message.type !== "request") return;
 
     if (message.method !== METHOD_INITIALIZE) {
-      sendError(message.id, JSON_RPC_METHOD_NOT_FOUND, "Method not found");
+      sendError(message.id, jsonRpcErrors.methodNotFound());
       return;
     }
     const params = parseInitializeParams(message.params);
     if (!params) {
-      sendError(message.id, JSON_RPC_INVALID_PARAMS, "Invalid params", { code: "INVALID_MESSAGE" });
+      sendError(message.id, jsonRpcErrors.invalidParams());
       return;
     }
     if (!params.protocolVersions.includes(PROTOCOL_VERSION)) {
-      sendError(message.id, JSON_RPC_PROTOCOL_MISMATCH, "Unsupported protocol version", {
-        code: "PROTOCOL_MISMATCH",
-        supportedProtocolVersions: [...SUPPORTED_PROTOCOL_VERSIONS],
-      });
+      sendError(message.id, jsonRpcErrors.protocolMismatch());
       return;
     }
     if (sessionDocumentId !== undefined && sessionDocumentId !== params.documentId) {

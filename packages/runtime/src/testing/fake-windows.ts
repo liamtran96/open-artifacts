@@ -1,7 +1,9 @@
 /**
  * In-process stand-ins for a host window and an iframe so the client and the
  * bridge can be exercised without a browser. Delivery is asynchronous (a
- * microtask) like real postMessage, and `source` is the sending window.
+ * microtask) like real postMessage. Each window knows which window is the
+ * source of messages posted to it, which is the only identity the production
+ * code compares against.
  */
 
 import type { ClientWindow } from "../client.js";
@@ -10,27 +12,26 @@ import type { MessageListenerTarget } from "../protocol.js";
 
 type MessageHandler = (event: MessageEvent) => void;
 
-export class FakeMessageEvent extends Event {
-  readonly data: unknown;
-  readonly source: unknown;
-  readonly origin: string;
-
-  constructor(data: unknown, source: unknown, origin: string) {
+class FakeMessageEvent extends Event {
+  constructor(
+    readonly data: unknown,
+    readonly source: unknown,
+  ) {
     super("message");
-    this.data = data;
-    this.source = source;
-    this.origin = origin;
   }
 }
 
+/** Deliveries queued by any FakeWindow and not yet run; `flush` drains them. */
+const pendingDeliveries = new Set<Promise<void>>();
+
 export class FakeWindow implements MessageListenerTarget {
   parent: FakeWindow | null = null;
+  /** Which window is the `source` of messages posted to this one. */
+  sourceOf: () => FakeWindow | null = () => null;
   readonly sent: { data: unknown; targetOrigin: string }[] = [];
   readonly listeners = new Set<MessageHandler>();
   /** Set to true to simulate a navigating/closed window whose postMessage throws. */
   closed = false;
-
-  constructor(readonly origin = "null") {}
 
   addEventListener(_type: "message", listener: MessageHandler): void {
     this.listeners.add(listener);
@@ -40,62 +41,49 @@ export class FakeWindow implements MessageListenerTarget {
     this.listeners.delete(listener);
   }
 
-  /** Called by the *sender*; `this` is the target window. */
+  /** Called by the sender; `this` is the target window. */
   postMessage(data: unknown, targetOrigin: string): void {
     if (this.closed) throw new Error("window is closed");
     this.sent.push({ data, targetOrigin });
-    const source = currentSender;
-    void Promise.resolve().then(() => {
+    const source = this.sourceOf();
+    const delivery = Promise.resolve().then(() => {
+      pendingDeliveries.delete(delivery);
       this.deliver(data, source);
     });
+    pendingDeliveries.add(delivery);
   }
 
   /** Deliver synchronously as if `source` had posted it. */
   deliver(data: unknown, source: unknown): void {
-    const event = new FakeMessageEvent(data, source, this.origin) as unknown as MessageEvent;
+    const event = new FakeMessageEvent(data, source) as unknown as MessageEvent;
     for (const listener of [...this.listeners]) listener(event);
   }
-}
 
-let currentSender: FakeWindow | null = null;
+  /** Data of the most recently posted message, or undefined. */
+  get lastSent(): unknown {
+    return this.sent.at(-1)?.data;
+  }
 
-/** Run `fn` with `sender` recorded as the source of any postMessage it makes. */
-export function sendingFrom<T>(sender: FakeWindow | null, fn: () => T): T {
-  const previous = currentSender;
-  currentSender = sender;
-  try {
-    return fn();
-  } finally {
-    currentSender = previous;
+  /** Data of every posted message whose JSON-RPC method matches. */
+  sentWithMethod(method: string): unknown[] {
+    return this.sent
+      .map((m) => m.data)
+      .filter((d) => (d as { method?: unknown } | null)?.method === method);
   }
 }
 
 export class FakeFrame implements HostFrame {
-  contentWindow: FakeWindow | null;
-
   constructor(
     private readonly host: FakeWindow,
-    contentWindow: FakeWindow | null,
-  ) {
-    this.contentWindow = contentWindow;
-  }
+    public contentWindow: FakeWindow | null,
+  ) {}
 
   /** Simulate a navigation to a new document: `next` becomes the frame's window. */
   navigate(next: FakeWindow): void {
-    linkFrameWindow(this.host, next);
+    next.parent = this.host;
+    next.sourceOf = () => this.host;
     this.contentWindow = next;
   }
-}
-
-/** Make `frame` a child of `host`: messages it posts to `host` carry it as the source. */
-function linkFrameWindow(host: FakeWindow, frame: FakeWindow): void {
-  frame.parent = host;
-  const framePost = FakeWindow.prototype.postMessage.bind(frame);
-  frame.postMessage = (data, origin) => {
-    sendingFrom(host, () => {
-      framePost(data, origin);
-    });
-  };
 }
 
 export interface WindowPair {
@@ -108,28 +96,19 @@ export interface WindowPair {
 
 /**
  * A host window containing one iframe. The client's `parent.postMessage` lands
- * on the host with `source === frame`; the bridge's `contentWindow.postMessage`
- * lands on the frame with `source === host`.
+ * on the host with `source === iframe.contentWindow`; the bridge's
+ * `contentWindow.postMessage` lands on the frame with `source === host`.
  */
 export function createWindowPair(): WindowPair {
-  const host = new FakeWindow("https://host.example");
-  const frame = new FakeWindow("null");
+  const host = new FakeWindow();
+  const frame = new FakeWindow();
   const iframe = new FakeFrame(host, frame);
-
-  // Messages posted to the host are attributed to whatever window currently
-  // lives in the frame, which is what the bridge compares against.
-  const hostPost = host.postMessage.bind(host);
-  host.postMessage = (data, origin) => {
-    sendingFrom(iframe.contentWindow, () => {
-      hostPost(data, origin);
-    });
-  };
-  linkFrameWindow(host, frame);
-
+  host.sourceOf = () => iframe.contentWindow;
+  iframe.navigate(frame);
   return { host, frame, iframe, clientWindow: frame };
 }
 
-/** Flush queued microtask deliveries. */
+/** Wait until every queued delivery, including ones queued by deliveries, has run. */
 export async function flush(): Promise<void> {
-  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  while (pendingDeliveries.size > 0) await Promise.all([...pendingDeliveries]);
 }

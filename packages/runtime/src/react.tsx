@@ -8,20 +8,19 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import type { ArtifactClient, ArtifactClientOptions, ArtifactClientStatus } from "../client.js";
-import { createArtifactClient } from "../client.js";
-import type { ArtifactContext, Connection } from "../protocol.js";
-import { ArtifactRuntimeError } from "../protocol.js";
+import type { ArtifactClient, ArtifactClientOptions, ArtifactClientStatus } from "./client.js";
+import { createArtifactClient } from "./client.js";
+import type { ArtifactContext, ArtifactRuntimeError, Connection } from "./protocol.js";
 
-export type { ArtifactClient, ArtifactClientOptions, ArtifactClientStatus } from "../client.js";
+export type { ArtifactClient, ArtifactClientOptions, ArtifactClientStatus } from "./client.js";
 export type {
   ArtifactContext,
   ArtifactKind,
   ArtifactTheme,
   Capability,
   Connection,
-} from "../protocol.js";
-export { ArtifactRuntimeError } from "../protocol.js";
+} from "./protocol.js";
+export { ArtifactRuntimeError } from "./protocol.js";
 
 export interface ArtifactRuntimeState {
   /** The client owned by the current effect instance; undefined until the effect runs. */
@@ -59,19 +58,14 @@ export function useArtifactClient(options: ArtifactClientOptions = {}): Artifact
       if (active) setState((previous) => ({ ...previous, ...partial }));
     };
 
-    patch({
-      client,
-      status: client.status,
-      context: undefined,
-      connection: undefined,
-      error: undefined,
-    });
+    patch({ ...initialState, client, status: client.status });
     const unsubscribeStatus = client.subscribeStatus((status) => {
-      patch(
-        status === "disconnected"
-          ? { status, context: undefined, connection: undefined }
-          : { status },
-      );
+      // The client owns what each transition invalidates; mirror it rather than re-encode it.
+      patch({
+        status,
+        context: client.context.get(),
+        ...(status === "connected" ? {} : { connection: undefined }),
+      });
     });
     const unsubscribeContext = client.context.subscribe((context) => {
       patch({ context });
@@ -81,12 +75,8 @@ export function useArtifactClient(options: ArtifactClientOptions = {}): Artifact
         patch({ connection, error: undefined });
       },
       (error: unknown) => {
-        patch({
-          error:
-            error instanceof ArtifactRuntimeError
-              ? error
-              : new ArtifactRuntimeError("INVALID_MESSAGE", "connect failed", { cause: error }),
-        });
+        // The client only ever rejects with ArtifactRuntimeError.
+        patch({ error: error as ArtifactRuntimeError });
       },
     );
 

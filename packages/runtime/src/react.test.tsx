@@ -2,47 +2,38 @@ import { StrictMode, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createArtifactHostBridge } from "../host.js";
-import type { ArtifactContext } from "../protocol.js";
-import { createWindowPair, flush, type WindowPair } from "../testing/fake-windows.js";
-import { ArtifactProvider, useArtifact, useArtifactClient, useArtifactContext } from "./index.js";
+import { createArtifactHostBridge } from "./host.js";
+import { ArtifactProvider, useArtifact, useArtifactClient, useArtifactContext } from "./react.js";
+import { createWindowPair, flush, type WindowPair } from "./testing/fake-windows.js";
+import { sampleContext as context } from "./testing/helpers.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const hostContext: ArtifactContext = {
-  artifactId: "art_react",
-  viewedRevision: 2,
-  kind: "html",
-  theme: "light",
-  locale: "en-US",
-};
-
 function Probe({ pair }: { pair: WindowPair }) {
-  const { status, context, connection, error } = useArtifactClient({
+  const {
+    status,
+    context: snapshot,
+    connection,
+    error,
+  } = useArtifactClient({
     window: pair.clientWindow,
     timeoutMs: 50,
   });
   return (
     <output>
-      {status}|{context?.theme ?? "-"}|{connection?.protocolVersion ?? "-"}|{error?.code ?? "-"}
+      {status}|{snapshot?.theme ?? "-"}|{connection?.protocolVersion ?? "-"}|{error?.code ?? "-"}
     </output>
   );
 }
 
 function Child() {
-  const context = useArtifactContext();
+  const snapshot = useArtifactContext();
   const { status } = useArtifact();
   return (
     <output>
-      {status}|{context?.artifactId ?? "-"}
+      {status}|{snapshot?.artifactId ?? "-"}
     </output>
   );
-}
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await flush();
-  });
 }
 
 describe("@open-artifacts/runtime/react", () => {
@@ -65,11 +56,7 @@ describe("@open-artifacts/runtime/react", () => {
 
   it("connects on mount, mirrors theme changes, and disposes on unmount", async () => {
     const pair = createWindowPair();
-    const bridge = createArtifactHostBridge({
-      iframe: pair.iframe,
-      window: pair.host,
-      context: hostContext,
-    });
+    const bridge = createArtifactHostBridge({ iframe: pair.iframe, window: pair.host, context });
     await act(async () => {
       root.render(<Probe pair={pair} />);
       await flush();
@@ -93,11 +80,7 @@ describe("@open-artifacts/runtime/react", () => {
 
   it("creates a fresh client per Strict Mode remount without leaking the first one", async () => {
     const pair = createWindowPair();
-    const bridge = createArtifactHostBridge({
-      iframe: pair.iframe,
-      window: pair.host,
-      context: hostContext,
-    });
+    const bridge = createArtifactHostBridge({ iframe: pair.iframe, window: pair.host, context });
     await act(async () => {
       root.render(
         <StrictMode>
@@ -106,7 +89,6 @@ describe("@open-artifacts/runtime/react", () => {
       );
       await flush();
     });
-    await settle();
     expect(container.textContent).toBe("connected|light|1|-");
     expect(pair.frame.listeners.size).toBe(1);
     bridge.dispose();
@@ -114,11 +96,7 @@ describe("@open-artifacts/runtime/react", () => {
 
   it("reports host teardown as disconnected and clears the snapshot", async () => {
     const pair = createWindowPair();
-    const bridge = createArtifactHostBridge({
-      iframe: pair.iframe,
-      window: pair.host,
-      context: hostContext,
-    });
+    const bridge = createArtifactHostBridge({ iframe: pair.iframe, window: pair.host, context });
     await act(async () => {
       root.render(<Probe pair={pair} />);
       await flush();
@@ -144,11 +122,7 @@ describe("@open-artifacts/runtime/react", () => {
 
   it("shares one client through ArtifactProvider and throws outside it", async () => {
     const pair = createWindowPair();
-    const bridge = createArtifactHostBridge({
-      iframe: pair.iframe,
-      window: pair.host,
-      context: hostContext,
-    });
+    const bridge = createArtifactHostBridge({ iframe: pair.iframe, window: pair.host, context });
     await act(async () => {
       root.render(
         <ArtifactProvider options={{ window: pair.clientWindow }}>
@@ -158,10 +132,8 @@ describe("@open-artifacts/runtime/react", () => {
       );
       await flush();
     });
-    expect(container.textContent).toBe("connected|art_reactconnected|art_react");
-    expect(
-      pair.host.sent.filter((m) => (m.data as { method?: string }).method === "oa/initialize"),
-    ).toHaveLength(1);
+    expect(container.textContent).toBe("connected|art_1connected|art_1");
+    expect(pair.host.sentWithMethod("oa/initialize")).toHaveLength(1);
     bridge.dispose();
 
     const lonely = createRoot(document.createElement("div"));
