@@ -24,4 +24,4 @@ bridge.setContext({ theme: "dark" });
 bridge.dispose();
 ```
 
-Contract: [docs/contracts/runtime-sdk.md](../../docs/contracts/runtime-sdk.md). Package boundaries are listed in [docs/design/architecture.md](../../docs/design/architecture.md) and enforced by `.dependency-cruiser.cjs`.
+Walkthrough with diagrams: [docs/guides/runtime-walkthrough.md](../../docs/guides/runtime-walkthrough.md). Contract: [docs/contracts/runtime-sdk.md](../../docs/contracts/runtime-sdk.md). Package boundaries are listed in [docs/design/architecture.md](../../docs/design/architecture.md) and enforced by `.dependency-cruiser.cjs`.

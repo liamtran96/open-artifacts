@@ -8,12 +8,17 @@ These files are the single source of the documentation. The site under `apps/doc
 
 | Folder | Contents | Lifecycle |
 | --- | --- | --- |
+| [guides/](guides/) | Worked examples and walkthroughs of implemented slices | Living; updated with the code |
 | [design/](design/) | Architecture, glossary, and cross-cutting requirements | Living; updated as the design changes |
 | [contracts/](contracts/) | Typed public surfaces: embed API, host adapters, agent tools, runtime protocol | Living; versioned with the code once it exists |
 | [decisions/](decisions/) | One record per open or taken design decision | Append-only; supersede, never rewrite |
 | [plans/](plans/) | Dated delivery plans | Dated records |
 | [implementation-notes/](implementation-notes/) | Dated status and verification records | Dated records |
 | references/ | Studies of other products that informed the design | Local-only, gitignored, never linked from committed docs |
+
+## Guides
+
+- [Runtime walkthrough](guides/runtime-walkthrough.md)
 
 ## Design
 

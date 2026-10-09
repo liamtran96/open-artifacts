@@ -50,5 +50,6 @@ The full command list and contribution rules are in [CONTRIBUTING](https://githu
 
 1. [Architecture](design/architecture.md) for package boundaries, the saved artifact model, and preview isolation.
 2. [Glossary](design/glossary.md) for the vocabulary used everywhere else.
-3. [Embed API](contracts/embed-api.md), [host adapters](contracts/host-adapters.md), [agent tools](contracts/agent-tools.md), and the [runtime SDK](contracts/runtime-sdk.md) for the typed contracts.
-4. [Decision records](decisions/README.md) for why the design is shaped the way it is.
+3. [Runtime walkthrough](guides/runtime-walkthrough.md) for a worked example of the one slice that is implemented.
+4. [Embed API](contracts/embed-api.md), [host adapters](contracts/host-adapters.md), [agent tools](contracts/agent-tools.md), and the [runtime SDK](contracts/runtime-sdk.md) for the typed contracts.
+5. [Decision records](decisions/README.md) for why the design is shaped the way it is.

@@ -3,6 +3,7 @@
   "pages": [
     "README",
     "getting-started",
+    "guides",
     "design",
     "contracts",
     "decisions",

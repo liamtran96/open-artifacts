@@ -105,6 +105,11 @@ Commands run and results:
 
 Not verified: Firefox and WebKit, mobile viewports, and the production `vite build` output served statically (the examples were verified through the dev servers). The three ESM entries are built with code splitting, so an app that loads more than one shares a single copy of the client and protocol and a single `ArtifactRuntimeError` class.
 
+## Open items noted on 2026-10-09
+
+- **Preview CSP is not applied anywhere yet.** Decision 0004 fixes the policy (`default-src 'none'; connect-src 'none'; form-action 'none'; base-uri 'none'; img-src data:`), and the embed API carries it as the `csp` field of a preview document, but no package emits it. The runtime examples rely on the `sandbox` attribute alone, which is acceptable for a hand-written demo artifact and not for agent-generated HTML. The first preview rendered by the embed package or the HTML adapter must deliver the policy as a `<meta http-equiv="Content-Security-Policy">` tag, since an opaque-origin frame cannot receive a response header. See the [runtime walkthrough](../guides/runtime-walkthrough.md#csp-status).
+- **Comparison with Claude Artifacts recorded.** The publicly described shape (sandboxed iframe on a separate origin, postMessage handshake, `window.claude.*` runtime, CSP-limited network) matches this SDK's isolation model; this SDK's v1 runtime is narrower (context read and subscribe only) and its editing model is broader (shared revisions through adapters). Recorded in the [runtime walkthrough](../guides/runtime-walkthrough.md#comparison-with-claude-artifacts).
+
 ## Remaining work and maintenance
 
 Implement the plan's unchecked slices and append actual test commands/results here. Public package names, toolchain/browser support, safe HTML input policy, and asset behavior remain implementation decisions identified in the plan. Do not claim a completed HTML editing SDK when only the context/theme slice is implemented.
