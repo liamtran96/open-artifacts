@@ -36,9 +36,9 @@ Implement and verify one working slice at a time. Record completed behavior and 
 
 - [x] Establish a TypeScript workspace with build, typecheck, lint, and test scripts.
 - [x] Enforce package dependency rules: core/base runtime have no React or editor-library imports; optional adapters load independently.
-- [ ] Build a framework-independent runtime client and a trusted host bridge.
-- [ ] Implement protocol negotiation, context snapshots, theme updates, and deterministic teardown according to runtime-sdk.md.
-- [ ] Provide an ESM build with declarations and an IIFE build for plain HTML.
+- [x] Build a framework-independent runtime client and a trusted host bridge.
+- [x] Implement protocol negotiation, context snapshots, theme updates, and deterministic teardown according to runtime-sdk.md.
+- [x] Provide an ESM build with declarations and an IIFE build for plain HTML.
 - [ ] Add a small React integration using the same client; keep React optional.
 - [ ] Demonstrate an HTML artifact and a React artifact receiving the same context and live theme updates from a host.
 - [ ] Verify iframe isolation and connection lifecycle in a real browser.

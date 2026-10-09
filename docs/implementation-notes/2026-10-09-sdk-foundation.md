@@ -69,6 +69,25 @@ Commands run and results:
 - `pnpm e2e`: passes with no tests via `--pass-with-no-tests`; browsers are not yet installed on this machine.
 - `pnpm format:check`: clean. Markdown is excluded from Prettier to avoid reflowing the design documents.
 
+## Runtime client and host bridge (2026-10-09)
+
+Slice 1's third, fourth, and fifth items. `packages/runtime/src` now holds `protocol.ts` (envelope, context, and parameter validators shared by both sides), `client.ts` (`createArtifactClient`), `host.ts` (`createArtifactHostBridge`, published through `src/host/index.ts` as the `./host` export), and `testing/fake-windows.ts` (an in-process host/iframe pair whose postMessage delivers on a microtask with the sender as `source`). The scaffold's `packageName` test was replaced.
+
+Behavior implemented from the contract: JSON-RPC 2.0 over postMessage with the `oa/initialize`, `oa/context-changed`, and `oa/teardown` methods; a 16 KiB size gate; initialize retried every 250 ms with the same request ID until a 5 s deadline (both overridable, validated as positive finite); shared in-flight connect; per-session queueing of context notifications that arrive during initialization; strictly increasing sequence checks; session rotation on frame load; teardown to a disconnected state that allows explicit reconnection; terminal, idempotent dispose that rejects pending work with DISPOSED. The host answers only `event.source === iframe.contentWindow`, returns the same session on a repeated initialize, and replies with -32601, -32602, -32600, or -32000 (`PROTOCOL_MISMATCH`) as the contract describes.
+
+Two contract clarifications were recorded in `docs/contracts/runtime-sdk.md` while implementing: the client exposes a read-only `status`, and queued startup notifications are kept per observed session because the session ID is unknown until the result arrives.
+
+Commands run and results (from `packages/runtime` unless noted):
+
+- `pnpm typecheck`: clean.
+- `pnpm lint`: clean after replacing bracket access with dot access and attaching rejection expectations before advancing fake timers.
+- `pnpm test`: 3 files, 31 tests passed (client 16, host 8, integration 6). They cover the "Runtime client" and "Host bridge" rows of the plan's verification table: host-first and client-first startup ordering, repeat connect sharing one listener, timeout with no leftover timers, mismatch and malformed results, wrong-window, stale-session, out-of-order, malformed, and oversized traffic, theme change during initialization, teardown and reconnection, dispose during initialization, late responses to old requests, frame reload invalidating the old session, and two clients sharing one session.
+- Workspace `turbo run build --filter='./packages/*'`: 6 of 6 tasks successful; runtime emits `dist/index.js`, `dist/index.global.js` (global `OpenArtifacts`), `dist/host.js`, and declarations for both entries.
+- Workspace `pnpm depcruise`: no violations (11 modules, 15 dependencies cruised); the host entry and testing helper stay inside the runtime package.
+- Workspace `pnpm format:check`: clean after running Prettier on the new files.
+
+Not verified: behavior in a real browser (opaque-origin iframe, actual `MessageEvent.source` semantics, listener/timer leaks across reload), the IIFE consumed from plain HTML, and the React entry. Those remain the open slice 1 items.
+
 ## Remaining work and maintenance
 
 Implement the plan's unchecked slices and append actual test commands/results here. Public package names, toolchain/browser support, safe HTML input policy, and asset behavior remain implementation decisions identified in the plan. Do not claim a completed HTML editing SDK when only the context/theme slice is implemented.

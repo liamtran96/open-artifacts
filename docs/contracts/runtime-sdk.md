@@ -4,7 +4,7 @@ title: "Artifact runtime SDK contract"
 
 # Artifact runtime SDK contract
 
-Status: Proposed v1 contract; APIs and packages below do not exist yet.
+Status: v1 contract. The client and host bridge are implemented in `packages/runtime` (2026-10-09) and verified by unit and in-process integration tests; the React entry, examples, and real-browser checks are still pending. See the [implementation note](../implementation-notes/2026-10-09-sdk-foundation.md).
 
 This is the first technical slice in the [SDK plan](../plans/2026-10-09-sdk-implementation-plan.md). It serves JavaScript/TypeScript running inside isolated HTML or React previews. The trusted editor embedding API is a separate concern; see [architecture](../design/architecture.md).
 
@@ -12,7 +12,7 @@ The editor-controller design in [architecture](../design/architecture.md) inform
 
 ## Initial API
 
-Proposed package name: @open-artifacts/runtime. Availability and naming must be checked before publication.
+Package name: @open-artifacts/runtime (workspace name; npm availability must be checked before publication). The client exposes a read-only `status` ("idle", "connecting", "connected", "disconnected", "disposed") in addition to the members below, and `createArtifactClient` accepts `window`, `targetOrigin`, `timeoutMs`, `retryIntervalMs`, and `onListenerError` options.
 
 ```ts
 type ArtifactKind = "html" | "document" | "layout" | "app";
@@ -53,11 +53,13 @@ dispose() is idempotent and terminal: remove listeners, clear timers and subscri
 
 ## Host API
 
-Expose a separate trusted entry point, proposed as @open-artifacts/runtime/host:
+Expose a separate trusted entry point, @open-artifacts/runtime/host:
 
 - createArtifactHostBridge({ iframe, context }) binds a bridge to one iframe and a host-supplied, validated context.
 - setContext({ theme, locale }) publishes changed context. Artifact identity, kind, and viewed revision are immutable within the session.
 - dispose() removes listeners and sends teardown when possible.
+- getContext() returns the context currently published; sessionId exposes the current session identifier, which rotates on every frame load.
+- Options: capabilities (default: all v1 capabilities), targetOrigin (default "*"), and window (default globalThis.window).
 
 Bind the host listener before navigating/loading the artifact. The host remains authoritative for identity and revision; ignore any client-supplied replacements. A frame load after an established session invalidates that session. Navigating to a different artifact or revision disposes and recreates the bridge with new host context.
 
@@ -95,11 +97,11 @@ sequenceDiagram
 
 The initialize result includes the current context sequence. Requests use unique IDs; responses must match the active request and sender. A valid repeat of the same initialization request within the current frame session returns the same negotiated result. Once connected, a second SDK client may receive the same session context; it does not receive additional permissions.
 
-The client listens before sending initialize. Retry the same initialization request on a bounded interval until a default 5-second deadline, covering host/frame startup ordering. Default retry interval: 250 ms. Allow test/configuration overrides, validate positive finite bounds, and stop retries on success, failure, or disposal. Queue only the newest matching-session context notification that arrives during initialization, then apply it if its sequence exceeds the initialization snapshot. This prevents theme changes during startup from being lost or applied out of order.
+The client listens before sending initialize. Retry the same initialization request on a bounded interval until a default 5-second deadline, covering host/frame startup ordering. Default retry interval: 250 ms. Allow test/configuration overrides, validate positive finite bounds, and stop retries on success, failure, or disposal. Queue only the newest matching-session context notification that arrives during initialization, then apply it if its sequence exceeds the initialization snapshot. Because the session ID is unknown until the result arrives, the client keeps the newest notification per observed session (bounded to eight sessions) and selects the matching one on success. This prevents theme changes during startup from being lost or applied out of order.
 
 On teardown or navigation, invalidate subscriptions' connection state and reject pending operations with DISCONNECTED. A terminally disposed client cannot reconnect; a disconnected client can explicitly connect again. Late responses from old requests/sessions cannot restore a connection.
 
-Reject incompatible initialization with PROTOCOL_MISMATCH; do not silently downgrade to unknown semantics. Use stable SDK error codes TIMEOUT, PROTOCOL_MISMATCH, INVALID_MESSAGE, DISCONNECTED, DISPOSED, and HOST_UNAVAILABLE. Map these to JSON-RPC errors with the SDK code in error data. A top-level standalone preview without a parent rejects immediately with HOST_UNAVAILABLE; an unrelated parent eventually times out. Context/theme v1 exposes no write methods.
+Reject incompatible initialization with PROTOCOL_MISMATCH; do not silently downgrade to unknown semantics. A JSON-RPC "Method not found" reply to initialize also maps to PROTOCOL_MISMATCH; any other host error without an SDK code maps to INVALID_MESSAGE. The host reports a mismatch with JSON-RPC code -32000 and `data.code = "PROTOCOL_MISMATCH"`, invalid params with -32602, and a malformed request that still carries an ID with -32600, both with `data.code = "INVALID_MESSAGE"`. Oversized traffic is dropped without a reply. Use stable SDK error codes TIMEOUT, PROTOCOL_MISMATCH, INVALID_MESSAGE, DISCONNECTED, DISPOSED, and HOST_UNAVAILABLE. Map these to JSON-RPC errors with the SDK code in error data. A top-level standalone preview without a parent rejects immediately with HOST_UNAVAILABLE; an unrelated parent eventually times out. Context/theme v1 exposes no write methods.
 
 ## Message boundary
 
